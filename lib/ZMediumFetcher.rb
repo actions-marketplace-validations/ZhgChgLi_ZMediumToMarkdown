@@ -140,14 +140,7 @@ class ZMediumFetcher
         progress.message = "Downloading Post..."
         progress.printLog()
 
-        postHtml = Request.html(Request.URL(postURL))
-
-        postContent = Post.parsePostContentFromHTML(postHtml)
-        if postContent.nil?
-            raise "Error: Content is empty! PostURL: #{postURL}"
-        end
-        
-        postInfo = Post.parsePostInfoFromPostContent(postContent, postID, imagePathPolicy)
+        postInfo = Post.parsePostInfo(postID, imagePathPolicy)
         contentInfo = Post.fetchPostParagraphs(postID)
         
         if contentInfo.nil?
