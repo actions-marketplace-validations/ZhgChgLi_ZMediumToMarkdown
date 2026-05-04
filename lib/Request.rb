@@ -50,6 +50,91 @@ class Request
 
     CLOUDFLARE_MITIGATION_VALUES = %w[challenge block managed_challenge].freeze
 
+    # Interactive Cloudflare recovery: when running on a developer's own
+    # machine (i.e. there is a real TTY and no CI marker env var), instead
+    # of just raising CloudflareBlockedError we can open Medium in the
+    # user's default browser, let them clear the challenge by hand, and
+    # retry the request once. CI environments still raise immediately.
+    module InteractiveCloudflareRecovery
+        # Common CI env vars. If any of these is set to a non-empty,
+        # non-"false" value, we assume non-interactive.
+        CI_ENV_VARS = %w[CI GITHUB_ACTIONS GITLAB_CI CIRCLECI JENKINS_URL BUILDKITE TF_BUILD TRAVIS APPVEYOR].freeze
+
+        # Explicit opt-out for users who want the old raise-and-exit behavior
+        # even on a TTY.
+        DISABLE_ENV_VAR = 'MEDIUM_NO_AUTO_BROWSER'.freeze
+
+        module_function
+
+        def available?(env: ENV, stdin: $stdin, stdout: $stdout)
+            return false if env[DISABLE_ENV_VAR].to_s == '1'
+            return false if inCIEnvironment?(env)
+            stdin.tty? && stdout.tty?
+        rescue StandardError
+            # Some test stdio doubles don't implement .tty? — treat as non-interactive.
+            false
+        end
+
+        def inCIEnvironment?(env = ENV)
+            CI_ENV_VARS.any? do |key|
+                value = env[key].to_s
+                !value.empty? && value.downcase != 'false' && value != '0'
+            end
+        end
+
+        # Build the platform-appropriate command for opening a URL in the
+        # default browser. Returned as an array so callers can spawn / system
+        # without going through a shell.
+        def openCommand(url, hostOS: RbConfig::CONFIG['host_os'])
+            case hostOS
+            when /darwin/                 then ['open', url]
+            when /mswin|mingw|cygwin/     then ['cmd', '/c', 'start', '', url]
+            else                               ['xdg-open', url]
+            end
+        end
+
+        def openInBrowser(url, errput: $stderr)
+            spawn(*openCommand(url), out: File::NULL, err: File::NULL)
+        rescue Errno::ENOENT, StandardError => e
+            errput.puts "(Couldn't auto-open browser — #{e.class}: #{e.message}. Open #{url} manually.)"
+        end
+
+        # Run the interactive recovery flow. Returns true if the user
+        # confirmed they cleared the challenge, false if they pressed Ctrl-D
+        # (EOF) or otherwise gave up.
+        def run(url, errput: $stderr, input: $stdin, autoOpen: true)
+            errput.puts <<~MSG
+
+              ──────────────────────────────────────────────────────────────────────
+              ⚠  Cloudflare bot challenge detected at #{url}.
+
+              Since this looks like an interactive run, you can clear the
+              challenge in your browser:
+                1. A browser window will open at https://medium.com.
+                2. Complete the "Just a moment…" / CAPTCHA challenge there.
+                3. Come back here and press Enter to retry.
+
+              (To disable this prompt and just fail fast, set #{DISABLE_ENV_VAR}=1.)
+              ──────────────────────────────────────────────────────────────────────
+
+            MSG
+
+            openInBrowser('https://medium.com', errput: errput) if autoOpen
+
+            errput.print 'Press Enter once the challenge is cleared (Ctrl-D to give up)… '
+            line = input.gets
+            errput.puts
+            !line.nil?
+        end
+    end
+
+    @@cloudflareInteractiveResolutionAttempted = false
+
+    # Test helper: reset the once-per-process recovery flag.
+    def self.resetCloudflareInteractiveResolution!
+        @@cloudflareInteractiveResolutionAttempted = false
+    end
+
     def self.URL(url, method = 'GET', data = nil, retryCount = 0)
         retryCount += 1
 
@@ -118,7 +203,18 @@ class Request
           end
         end
 
-        raise CloudflareBlockedError.new(response.code.to_i, url) if cloudflareBlocked?(response)
+        if cloudflareBlocked?(response)
+            # Once-per-process: if we're on an interactive TTY, ask the user
+            # to clear the challenge in a browser and retry. CI / non-TTY
+            # environments fall straight through to the raise below.
+            if !@@cloudflareInteractiveResolutionAttempted && InteractiveCloudflareRecovery.available?
+                @@cloudflareInteractiveResolutionAttempted = true
+                if InteractiveCloudflareRecovery.run(url)
+                    return self.URL(url, method, data, retryCount)
+                end
+            end
+            raise CloudflareBlockedError.new(response.code.to_i, url)
+        end
 
         # 3XX Redirect
         if response.code.to_i == 429

@@ -27,8 +27,10 @@ module CLI
             STRONGLY recommend BOTH cookies AND a Cloudflare Worker proxy.
         • Local machine:
             Cookies recommended for paywalled posts. If a Cloudflare
-            challenge appears, open https://medium.com in a browser,
-            complete the challenge, and re-run.
+            challenge appears, the tool will automatically open
+            https://medium.com in your browser and prompt you to retry
+            once you've cleared it. Set MEDIUM_NO_AUTO_BROWSER=1 to
+            opt out and just fail fast.
 
       Pass cookies via env (preferred — keeps secrets out of shell history):
         MEDIUM_COOKIE_SID=... MEDIUM_COOKIE_UID=... ZMediumToMarkdown -p URL
