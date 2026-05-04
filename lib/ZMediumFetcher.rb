@@ -120,12 +120,9 @@ class ZMediumFetcher
         progress.message = "Downloading Post..."
         progress.printLog()
 
-        postHtml = Request.html(Request.URL(postURL))
+        postInfo = Post.parsePostInfo(postID, imagePathPolicy)
+        raise "Error: Post info not found! PostURL: #{postURL}" if postInfo.nil?
 
-        postContent = Post.parsePostContentFromHTML(postHtml)
-        raise "Error: Content is empty! PostURL: #{postURL}" if postContent.nil?
-
-        postInfo = Post.parsePostInfoFromPostContent(postContent, postID, imagePathPolicy)
         contentInfo = Post.fetchPostParagraphs(postID)
         raise "Error: Paragraph Content not found! PostURL: #{postURL}" if contentInfo.nil?
 

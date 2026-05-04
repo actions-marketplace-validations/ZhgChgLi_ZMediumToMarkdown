@@ -1,9 +1,12 @@
 require_relative 'test_helper'
+require 'json'
 
 # Net::HTTP#read_body returns ASCII-8BIT, which causes Nokogiri to
 # misdetect inline <script> bodies as ISO-8859-1, mojibaking embedded
 # CJK/Arabic/Hebrew JSON. These tests cover the UTF-8 force-encoding
-# path through Request.html / Request.body / Post.parsePostContentFromHTML.
+# path through Request.html / Request.body, which feed downstream
+# Nokogiri parsing (used by IframeParser / Helper.fetchOGImage) and
+# the GraphQL JSON pipeline (used by Post.parsePostInfo / Post.fetchPostParagraphs).
 class RequestEncodingTest < Minitest::Test
   FakeResponse = Struct.new(:code, :body) do
     def read_body
@@ -12,17 +15,16 @@ class RequestEncodingTest < Minitest::Test
   end
 
   def test_html_force_encodes_binary_response_body_to_utf8
-    apollo = '<html><body><script>window.__APOLLO_STATE__ = {"title":"使用 App"}</script></body></html>'
-    binary_body = apollo.dup.force_encoding('ASCII-8BIT')
+    page = '<html><body><meta property="og:title" content="使用 App"></body></html>'
+    binary_body = page.dup.force_encoding('ASCII-8BIT')
     response = FakeResponse.new('200', binary_body)
 
     doc = Request.html(response)
     refute_nil doc
 
-    parsed = Post.parsePostContentFromHTML(doc)
-    refute_nil parsed, 'Expected to recover Apollo state JSON from forced-UTF-8 body'
-    assert_equal '使用 App', parsed['title'],
-                 'CJK title must round-trip without mojibake (would be "ä½¿ç¨ App" if encoding was wrong)'
+    title = doc.search("meta[property='og:title']").first['content']
+    assert_equal '使用 App', title,
+                 'CJK content must round-trip without mojibake (would be "ä½¿ç¨ App" if encoding was wrong)'
   end
 
   def test_body_returns_utf8_string_for_binary_response
@@ -57,19 +59,26 @@ class RequestEncodingTest < Minitest::Test
     assert_equal '', Request.body(response)
   end
 
-  def test_post_info_preserves_cjk_title_after_forced_utf8_pipeline
-    # End-to-end: a binary HTTP body containing an Apollo blob should
-    # produce a PostInfo whose title is intact CJK (the [:print:] strip
-    # is safe on properly-tagged UTF-8; it would only mangle the title
-    # if the encoding pipeline were broken).
-    apollo = '<html><body><script>window.__APOLLO_STATE__ = {"Post:abc":{"title":"使用 App","tags":[],"previewContent":{"subtitle":"中文副標題"}}}</script></body></html>'
-    response = FakeResponse.new('200', apollo.dup.force_encoding('ASCII-8BIT'))
+  def test_post_info_preserves_cjk_after_forced_utf8_pipeline
+    # End-to-end: a binary HTTP body containing the GraphQL JSON
+    # response should produce a PostInfo whose title is intact CJK.
+    # If Request.readBodyAsUTF8 didn't force UTF-8, JSON.parse would
+    # fail on multi-byte content tagged ASCII-8BIT.
+    payload = JSON.dump([{
+      'data' => {
+        'postResult' => {
+          'title'          => '使用 App',
+          'previewContent' => { 'subtitle' => '中文副標題' },
+          'tags'           => []
+        }
+      }
+    }])
+    binary_payload = payload.dup.force_encoding('ASCII-8BIT')
 
-    doc = Request.html(response)
-    content = Post.parsePostContentFromHTML(doc)
-    info = Post.parsePostInfoFromPostContent(content, 'abc', PathPolicy.new('/abs', 'rel'))
-
-    assert_equal '使用 App',  info.title
-    assert_equal '中文副標題', info.description
+    Request.stub(:URL, FakeResponse.new('200', binary_payload)) do
+      info = Post.parsePostInfo('abc', PathPolicy.new('/abs', 'rel'))
+      assert_equal '使用 App',  info.title
+      assert_equal '中文副標題', info.description
+    end
   end
 end
