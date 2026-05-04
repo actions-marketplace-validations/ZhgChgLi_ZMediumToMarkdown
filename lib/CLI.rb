@@ -23,7 +23,7 @@ module CLI
                                     without them you only get the preview.
 
       Recommended setup:
-        • CI / CD (GitHub Actions, Docker, cloud runners):
+        • CI / CD (GitHub Actions, cloud runners):
             STRONGLY recommend BOTH cookies AND a Cloudflare Worker proxy.
         • Local machine:
             Cookies recommended for paywalled posts. If a Cloudflare

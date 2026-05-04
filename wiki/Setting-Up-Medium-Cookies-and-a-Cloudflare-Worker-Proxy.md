@@ -9,7 +9,7 @@ The right setup depends on **where you're running** and **what you're trying to 
 
 | Scenario | Cookies (`sid` / `uid`) | Cloudflare Worker proxy |
 |---|---|---|
-| **CI / CD** (GitHub Actions, Docker, cloud runners) | **Strongly recommended** | **Strongly recommended** |
+| **CI / CD** (GitHub Actions, cloud runners) | **Strongly recommended** | **Strongly recommended** |
 | **Local machine** (your laptop / desktop) | Recommended for paywalled posts | Optional — see below |
 | **Anything that downloads paywalled posts** | **Required** | (independent) |
 
@@ -94,7 +94,7 @@ The composite action propagates the step's `env:` block to its inner shell, and 
 
 ### Why you need it
 
-Even with valid cookies, Cloudflare's bot detection can challenge requests based on the source IP. **Datacenter and cloud-runner IPs** (AWS, GCP, GitHub-hosted runners, Docker hosts on shared cloud providers, etc.) are particularly likely to be flagged. Symptoms include:
+Even with valid cookies, Cloudflare's bot detection can challenge requests based on the source IP. **Datacenter and cloud-runner IPs** (AWS, GCP, GitHub-hosted runners, etc.) are particularly likely to be flagged. Symptoms include:
 
 - `Blocked by Medium's Cloudflare layer (HTTP 403)` errors.
 - "Just a moment…" challenge HTML coming back instead of GraphQL JSON.
@@ -227,7 +227,7 @@ These two mitigations are independent and complementary:
 - Cookies tell Medium *who* you are (Member access, paywall content).
 - The Worker tells Cloudflare *where* the request is coming from (intra-Cloudflare, not a flagged IP).
 
-For anything beyond casual local use — scheduled GitHub Actions backups, Docker cron jobs, sharing the tool with a team — **set up both**. It's the difference between runs that "usually work" and runs that consistently work.
+For anything beyond casual local use — scheduled GitHub Actions backups, sharing the tool with a team — **set up both**. It's the difference between runs that "usually work" and runs that consistently work.
 
 ---
 

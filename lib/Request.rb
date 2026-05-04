@@ -32,7 +32,7 @@ class Request
                     moment…"). Then re-run the script — your residential IP
                     will be cleared for a while.
 
-                • CI / CD (GitHub Actions, Docker, cloud runners):
+                • CI / CD (GitHub Actions, cloud runners):
                     A human can't clear the challenge. Set up BOTH:
                       1. Medium login cookies (sid / uid) — pass via env
                          MEDIUM_COOKIE_SID and MEDIUM_COOKIE_UID, or via

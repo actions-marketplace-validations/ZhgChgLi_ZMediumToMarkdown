@@ -29,7 +29,7 @@ For **paywalled posts**, **bulk downloads**, or running on **CI / GitHub Actions
 - Jekyll-friendly mode (front matter, `_posts/` layout, asset paths, `{:target="_blank"}` link markers)
 - Skip-already-downloaded based on `last_modified_at` so it’s safe to run on a cron
 - Multilingual: CJK / Arabic / Hebrew / Cyrillic / emoji all round-trip cleanly
-- Ships as a gem and as a Docker image; usable from a GitHub Actions workflow
+- Ships as a Ruby gem; runs as a one-off CLI or from a GitHub Actions workflow
 
 ---
 
@@ -44,7 +44,7 @@ The right setup depends on where you're running:
 
 | Scenario | Cookies (`sid` / `uid`) | Cloudflare Worker proxy |
 |---|---|---|
-| **CI / CD** (GitHub Actions, Docker, cloud runners) | **Strongly recommended** | **Strongly recommended** |
+| **CI / CD** (GitHub Actions, cloud runners) | **Strongly recommended** | **Strongly recommended** |
 | **Local machine** (your laptop / desktop) | Recommended for paywalled posts | Optional |
 | **Anything that downloads paywalled posts** | **Required** | (independent) |
 
@@ -102,18 +102,6 @@ cd ZMediumToMarkdown
 bundle install
 bundle exec ruby bin/ZMediumToMarkdown -p "https://medium.com/..."
 ```
-
-### Docker
-
-```bash
-docker build -t zmediumtomarkdown:latest \
-  --build-arg CRON_SETTING="0 8 * * *" \
-  --build-arg ZMEDIUMTOMARKDOWN_COMMAND="-u <username> -s $MEDIUM_COOKIE_SID -d $MEDIUM_COOKIE_UID" \
-  .
-docker run -v "$(pwd)":/usr/src/app zmediumtomarkdown
-```
-
-The image runs `cron` so the configured command repeats on the schedule you pass in. Output is written to the mounted volume.
 
 ---
 
