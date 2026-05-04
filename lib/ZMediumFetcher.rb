@@ -183,7 +183,7 @@ class ZMediumFetcher
             FileUtils.touch absolutePath, :mtime => postInfo.latestPublishedAt
 
             progress.message = if isLockedPreviewOnly
-                                   "This post is behind Medium's paywall. You need to provide valid Medium Member login cookies to download the full post."
+                                   paywallMessage
                                else
                                    "Post Successfully Downloaded!"
                                end
@@ -265,6 +265,17 @@ class ZMediumFetcher
         meta[:lockedPreviewOnly] = lockedLine[/^(lockedPreviewOnly:)\s+(\S*)/, 2].to_s.downcase == "true" if lockedLine
 
         meta
+    end
+
+    # Wording branches on whether the user supplied Medium auth cookies, so
+    # they get an actionable next step: provide cookies vs. check that
+    # cookies belong to a Medium Member account that has access to the post.
+    def paywallMessage
+        if !defined?($cookies) || $cookies.nil? || ($cookies['sid'].to_s.empty? && $cookies['uid'].to_s.empty?)
+            "This post is behind Medium's paywall. Provide your Medium Member cookies (-s SID -d UID) to download the full content. See README -> Cookie setup."
+        else
+            "This post is behind Medium's paywall and the provided cookies don't grant access. Verify your sid/uid belong to a Medium Member account that can read this post (cookies expire roughly every 2 weeks)."
+        end
     end
 
     # Runs MarkupParser (when applicable) and the parser chain on a single

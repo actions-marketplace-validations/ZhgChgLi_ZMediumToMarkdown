@@ -29,6 +29,7 @@ require 'Parsers/FallbackParser'
 require 'Parsers/MarkupParser'
 require 'Parsers/MarkupStyleRender'
 require 'ZMediumFetcher'
+require 'CLI'
 
 module TestSupport
   POST_ID = 'abcdef123456'.freeze
