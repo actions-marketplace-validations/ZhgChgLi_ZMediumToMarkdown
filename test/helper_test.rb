@@ -3,12 +3,61 @@ require 'fileutils'
 require 'tmpdir'
 
 class HelperTest < Minitest::Test
-  def test_escape_markdown_escapes_all_special_chars
-    assert_equal '\*\_\`hi\!', Helper.escapeMarkdown('*_`hi!')
+  def test_escape_markdown_escapes_inline_special_chars
+    # Always-escape: \ ` * _ [ ]
+    assert_equal '\*\_\`hi!', Helper.escapeMarkdown('*_`hi!')
+    assert_equal '\[a\]\[b\]', Helper.escapeMarkdown('[a][b]')
+  end
+
+  def test_escape_markdown_leaves_block_level_chars_alone
+    # `escapeMarkdown` is for standalone snippets (no paragraph context),
+    # so block-level markers like `#` `-` `+` `>` and dots/parens are left
+    # as-is — they only matter at paragraph start, not in inline text.
+    assert_equal '# not a heading', Helper.escapeMarkdown('# not a heading')
+    assert_equal 'Mr. Smith (co-author)', Helper.escapeMarkdown('Mr. Smith (co-author)')
+    assert_equal 'a + b - c', Helper.escapeMarkdown('a + b - c')
+    assert_equal 'really!', Helper.escapeMarkdown('really!')
   end
 
   def test_escape_markdown_leaves_plain_text_alone
     assert_equal 'hello world', Helper.escapeMarkdown('hello world')
+  end
+
+  def test_markdown_escape_needed_for_inline_chars_anywhere
+    assert Helper.markdownEscapeNeeded?('*', [])
+    assert Helper.markdownEscapeNeeded?('*', %w[a b c])
+    assert Helper.markdownEscapeNeeded?('_', %w[w o r d])
+    assert Helper.markdownEscapeNeeded?('[', %w[t e x t])
+    assert Helper.markdownEscapeNeeded?('`', %w[t e x t])
+    assert Helper.markdownEscapeNeeded?('\\', [])
+  end
+
+  def test_markdown_escape_needed_for_line_start_block_markers
+    assert Helper.markdownEscapeNeeded?('#', [])
+    assert Helper.markdownEscapeNeeded?('>', [])
+    assert Helper.markdownEscapeNeeded?('-', [])
+    assert Helper.markdownEscapeNeeded?('+', [])
+  end
+
+  def test_markdown_escape_not_needed_for_block_markers_mid_line
+    refute Helper.markdownEscapeNeeded?('#', %w[a])
+    refute Helper.markdownEscapeNeeded?('>', %w[a])
+    refute Helper.markdownEscapeNeeded?('-', %w[c o])
+    refute Helper.markdownEscapeNeeded?('+', %w[a])
+    refute Helper.markdownEscapeNeeded?('.', %w[M r])
+    refute Helper.markdownEscapeNeeded?('(', %w[a])
+    refute Helper.markdownEscapeNeeded?(')', %w[a])
+    refute Helper.markdownEscapeNeeded?('!', %w[h i])
+  end
+
+  def test_markdown_escape_needed_for_ordered_list_marker_at_line_start
+    # `1. item` and `1) item` would both render as ordered list at line start.
+    assert Helper.markdownEscapeNeeded?('.', %w[1])
+    assert Helper.markdownEscapeNeeded?(')', %w[1])
+    assert Helper.markdownEscapeNeeded?('.', %w[1 2 3])
+    # Non-digit prefix → no ordered list interpretation.
+    refute Helper.markdownEscapeNeeded?('.', %w[1 a])
+    refute Helper.markdownEscapeNeeded?('.', %w[a 1])
   end
 
   def test_escape_html_to_entity

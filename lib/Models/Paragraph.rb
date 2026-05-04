@@ -5,8 +5,6 @@ require 'securerandom'
 class Paragraph
     attr_accessor :postID, :name, :orgText, :text, :type, :href, :metadata, :mixtapeMetadata, :iframe, :oliIndex, :markups, :markupLinks, :codeBlockMetadata
 
-    # Characters that need a leading backslash when emitted as plain markdown.
-    MARKDOWN_ESCAPE_REGEX = Helper::MARKDOWN_ESCAPE_REGEX
 
     class Iframe
         attr_accessor :id, :title, :type, :src
@@ -106,21 +104,25 @@ class Paragraph
             end
         end
 
+        # Walk every char in the paragraph text and inject synthetic ESCAPE
+        # markups for chars that would otherwise be re-interpreted as markdown.
+        # `precedingChars` is needed by Helper.markdownEscapeNeeded? to detect
+        # block-level markers at paragraph start (e.g. `# heading`, `1. item`).
         index = 0
+        precedingChars = []
         orgText.each_char do |char|
-            
-            if char.chars.join() =~ MARKDOWN_ESCAPE_REGEX
-                escapeMarkup = {
+            if Helper.markdownEscapeNeeded?(char, precedingChars)
+                markups.append(Markup.new(
                     "type" => 'ESCAPE',
                     "start" => index,
                     "end" => index + 1
-                }
-                markups.append(Markup.new(escapeMarkup))
+                ))
             end
-            
+            precedingChars << char
+
             index += 1
             if char.bytes.length >= 4
-                # some emoji need more space (in Medium)
+                # some emoji take an extra position in Medium's index space
                 index += 1
             end
         end

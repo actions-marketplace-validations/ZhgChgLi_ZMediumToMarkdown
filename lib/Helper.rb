@@ -11,7 +11,16 @@ require 'Request'
 
 class Helper
 
-    MARKDOWN_ESCAPE_REGEX = /(\*|_|`|\||\\|\{|\}|\[|\]|\(|\)|#|\+|\-|\.|\!)/.freeze
+    # Characters with inline markdown meaning at any position — they can
+    # always trigger syntax (emphasis, code spans, link/image start), so
+    # escape them everywhere.
+    INLINE_MARKDOWN_ESCAPE_CHARS = ['\\', '`', '*', '_', '[', ']'].freeze
+    INLINE_MARKDOWN_ESCAPE_REGEX = /[\\`*_\[\]]/.freeze
+
+    # Characters that only have meaning at the start of a paragraph
+    # (heading, blockquote, unordered list). Inside a line they're plain
+    # text and don't need a backslash.
+    LINE_START_ESCAPE_CHARS = ['#', '>', '-', '+'].freeze
 
     def self.fetchOGImage(url)
         html = Request.html(Request.URL(url))
@@ -20,8 +29,33 @@ class Helper
         image ? (image['content'] || "") : ""
     end
 
+    # Escape characters that always have inline markdown meaning. Used for
+    # standalone text snippets (e.g. fallback embed titles) where there is
+    # no surrounding paragraph context.
     def self.escapeMarkdown(text)
-        text.gsub(MARKDOWN_ESCAPE_REGEX) { |x| "\\#{x}" }
+        text.gsub(INLINE_MARKDOWN_ESCAPE_REGEX) { |c| "\\#{c}" }
+    end
+
+    # Returns true if `char` at this position would be re-interpreted as
+    # markdown when emitted as-is.
+    #
+    # `precedingChars` is the array of chars (in original order) that
+    # appear before `char` in the same paragraph — needed to detect the
+    # ordered-list pattern `<digits>.` / `<digits>)` at line start.
+    def self.markdownEscapeNeeded?(char, precedingChars)
+        return true if INLINE_MARKDOWN_ESCAPE_CHARS.include?(char)
+
+        if precedingChars.empty?
+            # Block-level marker at the very start of the paragraph.
+            return LINE_START_ESCAPE_CHARS.include?(char)
+        end
+
+        # Ordered-list marker: only when the entire prefix is digits.
+        if (char == '.' || char == ')') && precedingChars.all? { |c| c.match?(/\d/) }
+            return true
+        end
+
+        false
     end
 
     def self.escapeHTML(text, toHTMLEntity = true)
