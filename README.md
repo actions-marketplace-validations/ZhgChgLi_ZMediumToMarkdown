@@ -142,8 +142,11 @@ ZMediumToMarkdown -p "https://medium.com/<user>/<slug>-<id>"
 # Every post by a user, Jekyll-friendly into ./_posts/zmediumtomarkdown/ + ./assets/
 ZMediumToMarkdown -u zhgchgli --jekyll
 
-# With cookies (paywall + Cloudflare workaround)
-ZMediumToMarkdown -u zhgchgli -s "$MEDIUM_COOKIE_SID" -d "$MEDIUM_COOKIE_UID"
+# With cookies (paywall + bulk download). Prefer env vars over -s / -d
+# flags so the values don't end up in shell history or `ps` output.
+export MEDIUM_COOKIE_SID="<your sid>"
+export MEDIUM_COOKIE_UID="<your uid>"
+ZMediumToMarkdown -u zhgchgli
 ```
 
 > **Deprecated flags.** `-j USERNAME` and `-k POST_URL` still work for backwards compatibility but emit a warning. Use `--jekyll -u …` / `--jekyll -p …` instead.
@@ -179,11 +182,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: ZhgChgLi/ZMediumToMarkdown@main
+        env:
+          MEDIUM_COOKIE_SID: ${{ secrets.MEDIUM_COOKIE_SID }}
+          MEDIUM_COOKIE_UID: ${{ secrets.MEDIUM_COOKIE_UID }}
         with:
-          command: "-u zhgchgli -s ${{ secrets.MEDIUM_COOKIE_SID }} -d ${{ secrets.MEDIUM_COOKIE_UID }}"
+          command: "-u zhgchgli"
 ```
 
-Store `MEDIUM_COOKIE_SID` / `MEDIUM_COOKIE_UID` as repository secrets — never commit them.
+Store `MEDIUM_COOKIE_SID` / `MEDIUM_COOKIE_UID` as repository **secrets** (encrypted, masked from logs) — not repository variables, and never hard-coded in the YAML. Pass them via the step's `env:` block as shown rather than inside the `command:` string, so the values never appear in run logs. For CI runs we strongly recommend also pointing `MEDIUM_HOST` at a Cloudflare Worker proxy — see the [setup guide](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy).
 
 ---
 
