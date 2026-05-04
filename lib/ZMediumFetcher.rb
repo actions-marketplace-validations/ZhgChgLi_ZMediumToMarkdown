@@ -165,13 +165,7 @@ class ZMediumFetcher
                 file.puts(postMetaInfo) unless postMetaInfo.nil?
 
                 paragraphs.each_with_index do |paragraph, index|
-                    if !(CodeBlockParser.isCodeBlock(paragraph) || PREParser.isPRE(paragraph))
-                        markupParser = MarkupParser.new(paragraph, isForJekyll)
-                        markupParser.usersPostURLs = usersPostURLs
-                        paragraph.text = markupParser.parse()
-                    end
-
-                    file.puts(startParser.parse(paragraph))
+                    file.puts(renderParagraph(paragraph, startParser))
 
                     progress.currentPostParagraphIndex = index + 1
                     progress.message = "Converting Post..."
@@ -271,6 +265,17 @@ class ZMediumFetcher
         meta[:lockedPreviewOnly] = lockedLine[/^(lockedPreviewOnly:)\s+(\S*)/, 2].to_s.downcase == "true" if lockedLine
 
         meta
+    end
+
+    # Runs MarkupParser (when applicable) and the parser chain on a single
+    # Paragraph, returning the rendered markdown string.
+    def renderParagraph(paragraph, startParser)
+        unless CodeBlockParser.isCodeBlock(paragraph) || PREParser.isPRE(paragraph)
+            markupParser = MarkupParser.new(paragraph, isForJekyll)
+            markupParser.usersPostURLs = usersPostURLs
+            paragraph.text = markupParser.parse()
+        end
+        startParser.parse(paragraph)
     end
 
     # Walks the raw Medium paragraph dicts and produces a list of Paragraph
