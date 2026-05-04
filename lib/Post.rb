@@ -35,7 +35,11 @@ class Post
   # collection) directly from Medium's PostPageQuery GraphQL operation.
   # Replaces the previous approach of scraping window.__APOLLO_STATE__ out of
   # the post HTML page, which Medium has been progressively dismantling.
-  def self.parsePostInfo(postID, pathPolicy)
+  #
+  # When `skipImages: true`, the preview-image download is skipped entirely
+  # and `postInfo.previewImage` is left nil. Used by --stdout / --list /
+  # listPostsByUsername to avoid touching the filesystem.
+  def self.parsePostInfo(postID, pathPolicy, skipImages: false)
     json = postGraphQL("PostPageQuery", postPageQueryString,
                        { "postId" => postID,
                          "postMeteringOptions" => { "referrer" => "https://medium.com/me/stories" },
@@ -59,7 +63,7 @@ class Post
     postInfo.latestPublishedAt = Time.at(0, latestPublishedAt, :millisecond) if latestPublishedAt
 
     previewImageFileName = result.dig("previewImage", "id")
-    if previewImageFileName
+    if previewImageFileName && !skipImages && pathPolicy
       imagePathPolicy = PathPolicy.new(pathPolicy.getAbsolutePath(postID), pathPolicy.getRelativePath(postID))
       absolutePath = imagePathPolicy.getAbsolutePath(previewImageFileName)
 
