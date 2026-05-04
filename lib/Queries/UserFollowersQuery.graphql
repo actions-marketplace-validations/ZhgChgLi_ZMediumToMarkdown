@@ -1,0 +1,281 @@
+query UserFollowers($username: ID, $id: ID, $paging: PagingOptions) {
+  userResult(username: $username, id: $id) {
+    __typename
+    ... on User {
+      id
+      followersUserConnection(paging: $paging) {
+        pagingInfo {
+          next {
+            from
+            limit
+            __typename
+          }
+          __typename
+        }
+        users {
+          ...FollowList_publisher
+          __typename
+        }
+        __typename
+      }
+      ...UserCanonicalizer_user
+      ...FollowersHeader_publisher
+      ...NoFollows_publisher
+      __typename
+    }
+  }
+}
+
+fragment collectionUrl_collection on Collection {
+  id
+  domain
+  slug
+  __typename
+}
+
+fragment CollectionAvatar_collection on Collection {
+  name
+  avatar {
+    id
+    __typename
+  }
+  ...collectionUrl_collection
+  __typename
+  id
+}
+
+fragment SignInOptions_collection on Collection {
+  id
+  name
+  __typename
+}
+
+fragment SignUpOptions_collection on Collection {
+  id
+  name
+  __typename
+}
+
+fragment SusiModal_collection on Collection {
+  name
+  ...SignInOptions_collection
+  ...SignUpOptions_collection
+  __typename
+  id
+}
+
+fragment PublicationFollowButton_collection on Collection {
+  id
+  slug
+  name
+  ...SusiModal_collection
+  __typename
+}
+
+fragment PublicationFollowRow_collection on Collection {
+  __typename
+  id
+  name
+  description
+  ...CollectionAvatar_collection
+  ...PublicationFollowButton_collection
+}
+
+fragment userUrl_user on User {
+  __typename
+  id
+  customDomainState {
+    live {
+      domain
+      __typename
+    }
+    __typename
+  }
+  hasSubdomain
+  username
+}
+
+fragment UserAvatar_user on User {
+  __typename
+  id
+  imageId
+  membership {
+    tier
+    __typename
+    id
+  }
+  name
+  username
+  ...userUrl_user
+}
+
+fragment isUserVerifiedBookAuthor_user on User {
+  verifications {
+    isBookAuthor
+    __typename
+  }
+  __typename
+  id
+}
+
+fragment SignInOptions_user on User {
+  id
+  name
+  imageId
+  __typename
+}
+
+fragment SignUpOptions_user on User {
+  id
+  name
+  imageId
+  __typename
+}
+
+fragment SusiModal_user on User {
+  ...SignInOptions_user
+  ...SignUpOptions_user
+  __typename
+  id
+}
+
+fragment useNewsletterV3Subscription_newsletterV3 on NewsletterV3 {
+  id
+  type
+  slug
+  name
+  collection {
+    slug
+    __typename
+    id
+  }
+  user {
+    id
+    name
+    username
+    newsletterV3 {
+      id
+      __typename
+    }
+    __typename
+  }
+  __typename
+}
+
+fragment useNewsletterV3Subscription_user on User {
+  id
+  username
+  newsletterV3 {
+    ...useNewsletterV3Subscription_newsletterV3
+    __typename
+    id
+  }
+  __typename
+}
+
+fragment useAuthorFollowSubscribeButton_user on User {
+  id
+  name
+  ...useNewsletterV3Subscription_user
+  __typename
+}
+
+fragment useAuthorFollowSubscribeButton_newsletterV3 on NewsletterV3 {
+  id
+  name
+  ...useNewsletterV3Subscription_newsletterV3
+  __typename
+}
+
+fragment AuthorFollowSubscribeButton_user on User {
+  id
+  name
+  imageId
+  ...SusiModal_user
+  ...useAuthorFollowSubscribeButton_user
+  newsletterV3 {
+    id
+    ...useAuthorFollowSubscribeButton_newsletterV3
+    __typename
+  }
+  __typename
+}
+
+fragment UserFollowRow_user on User {
+  __typename
+  id
+  name
+  bio
+  ...UserAvatar_user
+  ...isUserVerifiedBookAuthor_user
+  ...AuthorFollowSubscribeButton_user
+}
+
+fragment FollowsHeader_publisher on Publisher {
+  __typename
+  id
+  name
+  ... on Collection {
+    ...collectionUrl_collection
+    __typename
+    id
+  }
+  ... on User {
+    ...userUrl_user
+    __typename
+    id
+  }
+}
+
+fragment FollowList_publisher on Publisher {
+  id
+  ... on Collection {
+    ...PublicationFollowRow_collection
+    __typename
+    id
+  }
+  ... on User {
+    ...UserFollowRow_user
+    __typename
+    id
+  }
+  __typename
+}
+
+fragment UserCanonicalizer_user on User {
+  id
+  username
+  hasSubdomain
+  customDomainState {
+    live {
+      domain
+      __typename
+    }
+    __typename
+  }
+  __typename
+}
+
+fragment FollowersHeader_publisher on Publisher {
+  ...FollowsHeader_publisher
+  ... on Collection {
+    subscriberCount
+    __typename
+    id
+  }
+  ... on User {
+    socialStats {
+      followerCount
+      __typename
+    }
+    __typename
+    id
+  }
+  __typename
+}
+
+fragment NoFollows_publisher on Publisher {
+  id
+  name
+  __typename
+}
