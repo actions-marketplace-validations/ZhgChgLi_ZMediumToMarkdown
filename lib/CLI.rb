@@ -12,6 +12,7 @@ module CLI
     COOKIE_SETUP_URL = 'https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy'.freeze
 
     DEFAULT_MEDIUM_HOST = 'https://medium.com/_/graphql'.freeze
+    DEFAULT_MIRO_MEDIUM_HOST = 'https://miro.medium.com'.freeze
 
     module_function
 
@@ -113,16 +114,24 @@ module CLI
         !host.empty? && host != DEFAULT_MEDIUM_HOST
     end
 
+    def imageProxyConfigured?
+        host = ENV['MIRO_MEDIUM_HOST'].to_s
+        !host.empty? && host != DEFAULT_MIRO_MEDIUM_HOST
+    end
+
     # Only warn when the invocation will actually hit Medium — skip for
     # --version, --clean, --help, --new.
     def warnAboutMissingSetup(options, errput: $stderr)
         return unless willHitMedium?(options)
 
-        missingCookies = !cookiesPresent?
-        missingProxy   = !proxyConfigured?
-        return if !missingCookies && !missingProxy
+        missingCookies     = !cookiesPresent?
+        missingProxy       = !proxyConfigured?
+        missingImageProxy  = !imageProxyConfigured?
+        return if !missingCookies && !missingProxy && !missingImageProxy
 
-        errput.puts buildSetupBanner(missingCookies: missingCookies, missingProxy: missingProxy)
+        errput.puts buildSetupBanner(missingCookies: missingCookies,
+                                     missingProxy: missingProxy,
+                                     missingImageProxy: missingImageProxy)
     end
 
     def willHitMedium?(options)
@@ -130,17 +139,18 @@ module CLI
     end
 
     # Builds the dynamic setup-warning banner. Header lists exactly which
-    # of (cookies, proxy) is missing so the user can act; body is static
-    # guidance covering empirical limits, scenarios, and how to pass each
-    # value via flag or env.
-    def buildSetupBanner(missingCookies:, missingProxy:)
+    # of (cookies, GraphQL proxy, image proxy) is missing so the user can
+    # act; body is static guidance covering empirical limits, scenarios,
+    # and how to pass each value via flag or env.
+    def buildSetupBanner(missingCookies:, missingProxy:, missingImageProxy:)
         lines = []
         lines << '──────────────────────────────────────────────────────────────────────'
         lines << '⚠  Setup notice — your run will work, but reliability is limited.'
         lines << ''
         lines << "What's missing:"
         lines << '  • Medium login cookies (sid / uid).' if missingCookies
-        lines << '  • Cloudflare Worker proxy (MEDIUM_HOST not set or still default).' if missingProxy
+        lines << '  • Cloudflare Worker proxy for Medium GraphQL (MEDIUM_HOST not set or still default).' if missingProxy
+        lines << '  • Cloudflare Worker proxy for image CDN (MIRO_MEDIUM_HOST not set or still default; optional companion).' if missingImageProxy
         lines << ''
         lines << <<~BODY.chomp
           Empirical limits without setup:
@@ -166,9 +176,13 @@ module CLI
           Or via flags (fine for one-off local runs):
             ZMediumToMarkdown -p URL -s YOUR_SID -d YOUR_UID
 
-          Pass Cloudflare Worker proxy URL:
-            ZMediumToMarkdown -p URL -x https://YOUR-WORKER.workers.dev/_/graphql
-            # or via env:  MEDIUM_HOST=https://YOUR-WORKER.workers.dev/_/graphql
+          Pass Cloudflare Worker proxy URL(s):
+            ZMediumToMarkdown -p URL \\
+              -x https://YOUR-WORKER.workers.dev/_/graphql \\
+              --miro_medium_host https://YOUR-IMAGE-WORKER.workers.dev
+            # or via env:
+            #   MEDIUM_HOST=https://YOUR-WORKER.workers.dev/_/graphql
+            #   MIRO_MEDIUM_HOST=https://YOUR-IMAGE-WORKER.workers.dev
 
           Full setup guide (cookies + Cloudflare Worker proxy):
             #{COOKIE_SETUP_URL}

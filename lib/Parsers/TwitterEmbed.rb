@@ -12,7 +12,7 @@ require 'Request'
 # any fetch / parse failure so the caller can fall back to a plain
 # link without raising.
 module TwitterEmbed
-    SYNDICATION_HOST = ENV.fetch('TWITTER_SYNDICATION_HOST', 'https://cdn.syndication.twitter.com').freeze
+    SYNDICATION_HOST = 'https://cdn.syndication.twitter.com'.freeze
 
     # Public: fetches a tweet payload and renders it as markdown.
     # Returns nil if the request, JSON parse, or render fails for any reason.

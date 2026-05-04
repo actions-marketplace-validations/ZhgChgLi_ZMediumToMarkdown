@@ -74,7 +74,6 @@ To proxy through a Cloudflare Worker, point the tool at your Worker URL:
 |---|---|---|
 | `MEDIUM_HOST` | `https://medium.com/_/graphql` | GraphQL endpoint |
 | `MIRO_MEDIUM_HOST` | `https://miro.medium.com` | Image CDN |
-| `TWITTER_SYNDICATION_HOST` | `https://cdn.syndication.twitter.com` | Tweet embed source |
 
 ### Full setup guide
 

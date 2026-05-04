@@ -193,7 +193,6 @@ The tool reads three environment variables that override the upstream hosts. Set
 |---|---|---|
 | `MEDIUM_HOST` | `https://medium.com/_/graphql` | GraphQL endpoint — point this at your Worker URL with the same `/_/graphql` path (e.g. `https://your-worker.your-account.workers.dev/_/graphql`). |
 | `MIRO_MEDIUM_HOST` | `https://miro.medium.com` | Image CDN — point this at your image-proxy Worker if you set one up. |
-| `TWITTER_SYNDICATION_HOST` | `https://cdn.syndication.twitter.com` | Tweet embed source. Usually unaffected by the Medium block, but available if needed. |
 
 Example:
 
