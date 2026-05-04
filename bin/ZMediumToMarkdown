@@ -7,22 +7,30 @@ require 'CLI'
 
 $cookies ||= {}
 
+# In --stdout / --list mode the disclaimer banners and post-run
+# pleasantries would otherwise dirty stdout (which has to stay pure
+# markdown / NDJSON for embedding callers). Route them to stderr.
+quietBanner = ARGV.include?('--stdout') || ARGV.include?('--list')
+bannerOut = quietBanner ? $stderr : $stdout
+
 begin
-    puts "#https://github.com/ZhgChgLi/ZMediumToMarkdown"
-    puts "You have read and agree with the Disclaimer."
+    bannerOut.puts "#https://github.com/ZhgChgLi/ZMediumToMarkdown"
+    bannerOut.puts "You have read and agree with the Disclaimer."
 
     CLI.main(ARGV)
 
-    puts "Execute Successfully!!!"
-    puts "#https://github.com/ZhgChgLi/ZMediumToMarkdown"
-    puts "#Thanks for using this tool."
-    puts "#If this is helpful, please help to star the repo or recommend it to your friends."
+    bannerOut.puts "Execute Successfully!!!"
+    bannerOut.puts "#https://github.com/ZhgChgLi/ZMediumToMarkdown"
+    bannerOut.puts "#Thanks for using this tool."
+    bannerOut.puts "#If this is helpful, please help to star the repo or recommend it to your friends."
 rescue Request::CloudflareBlockedError => e
     warn "\n#{e.message}\n"
     exit 1
 rescue => e
-    puts "#Error: #{e.class} #{e.message}\n"
-    puts e.backtrace
-    puts "#Please feel free to open an Issue or submit a fix/contribution via Pull Request on:\n"
-    puts "#https://github.com/ZhgChgLi/ZMediumToMarkdown\n"
+    errOut = quietBanner ? $stderr : $stdout
+    errOut.puts "#Error: #{e.class} #{e.message}\n"
+    errOut.puts e.backtrace
+    errOut.puts "#Please feel free to open an Issue or submit a fix/contribution via Pull Request on:\n"
+    errOut.puts "#https://github.com/ZhgChgLi/ZMediumToMarkdown\n"
+    exit 1 if quietBanner
 end
