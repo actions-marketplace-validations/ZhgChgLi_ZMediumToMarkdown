@@ -2,244 +2,259 @@
 
 ![ZMediumToMarkdown](https://user-images.githubusercontent.com/33706588/184416147-c2ec74d4-7107-484e-8ad2-302340cf6c1f.png)
 
-ZMediumToMarkdown is a powerful tool that allows you to effortlessly download and convert your Medium posts to Markdown format. 
+Download Medium posts as clean Markdown, preserving structure, images, links, code blocks, and common embeds for plain Markdown or Jekyll workflows.
 
-This project can help you create an auto-sync or auto-backup service from Medium, such as automatically syncing Medium posts to Jekyll or other static markdown blog engines, or backing up Medium posts to Github pages.
+[![Gem](https://badge.fury.io/rb/ZMediumToMarkdown.svg)](https://rubygems.org/gems/ZMediumToMarkdown)
 
-[![ZMediumToMarkdown](https://badge.fury.io/rb/ZMediumToMarkdown.svg)](https://rubygems.org/gems/ZMediumToMarkdown)
+## Try it in 30 seconds
 
-- [中文](https://medium.com/zrealm-ios-dev/converting-medium-posts-to-markdown-ddd88a84e177)
+```bash
+gem install ZMediumToMarkdown
+ZMediumToMarkdown -p "https://medium.com/<USER>/<POST>"
+```
 
+The converted Markdown is written to `./Output/zmediumtomarkdown/`. Public posts usually work without cookies.
 
-## Features
-- [x] Supports downloading posts and converting them to markdown format
-- [x] Supports downloading all posts and converting them to markdown format from any user without requiring login access
-- [x] Supports downloading paid content
-- [x] Supports downloading all of a post's images to the local drive and converting them to local paths
-- [x] Supports parsing Twitter tweet content to blockquotes
-- [x] Supports a command line interface
-- [x] Converts Gist source code to markdown code blocks
-- [x] Converts YouTube links embedded in a post to preview images
-- [x] Adjusts a post's last modification date from Medium to the locally downloaded markdown file
-- [x] Auto-skips posts that have already been downloaded and whose last modification date from Medium hasn't changed (convenient for auto-sync or auto-backup services, to save server bandwidth and execution time)
-- [x] Supports using Github Action as an auto-sync/backup service
-- [x] Highly optimized markdown format for Medium
-- [x] Native Markdown-style Render Engine
-(Feel free to contribute if you have any optimization ideas! MarkupStyleRender.rb)
-- [x] **Supports paywall posts.** (Requires providing valid Medium Member cookies)
-- [x] Jekyll and social share (og: tag) friendly
-- [x] 100% Ruby @ RubyGem
+For **paywalled posts**, **bulk downloads**, or **CI / GitHub Actions**, configure Medium cookies. For CI and datacenter IPs, also use a Cloudflare Worker proxy. In practice, Medium may start blocking after about 10 posts without cookies, or about 25 posts from CI without a proxy.
 
-# Buy me a beer ❤️❤️❤️
-
-[![Buy Me A Beer](https://github.com/user-attachments/assets/63f01edf-2aa5-4d91-8f8a-861e5b6b4feb)](https://www.paypal.com/ncp/payment/CMALMPT8UUTY2)
-
-[**If this project has helped you, feel free to sponsor me a cup of coffee, thank you.**](https://www.paypal.com/ncp/payment/CMALMPT8UUTY2)
-
-## Result
-- [Original post on Medium](https://medium.com/zrealm-ios-dev/avplayer-%E5%AF%A6%E8%B8%90%E6%9C%AC%E5%9C%B0-cache-%E5%8A%9F%E8%83%BD%E5%A4%A7%E5%85%A8-6ce488898003)
-- [Downloaded & Converted Output Result](example/2021-01-31-avplayer-實踐本地-cache-功能大全-6ce488898003.md)
-![Harry's Idea Draw](https://user-images.githubusercontent.com/33706588/171560402-40b23bec-a836-4468-9f07-68350ce82d4a.jpg)
-
-and I use this tool to convert from Meidum to [jekyllrb](https://zhgchg.li/)
-
-## medium-to-jekyll-starter
-
-I have just created a brand new GitHub repository template that allows you to move your Medium blog to your own Jekyll blog with just one click. Check it out: [medium-to-jekyll-starter](https://github.com/ZhgChgLi/medium-to-jekyll-starter.github.io).
-
-### I'M NOT GEEK, PLEASE SHOW ME HOW TO USE WITHOUT CODING
-
-- Please follow this post, step by step to creat your auto backup service without any coding:
-
-[How to use Github Action as your free & no code Medium Posts backup service](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/How-to-use-Github-Action-as-your-free-&-no-code-Medium-Posts-backup-service)
+> 📘 **[Setting Up Medium Cookies and a Cloudflare Worker Proxy →](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy)**
 
 ---
 
-## Setup
+## Features
 
-### Docker
-1. make sure has [Docker](https://www.docker.com/products/docker-desktop/) on your system.
-2. git clone this repo `git clone https://github.com/ZhgChgLi/ZMediumToMarkdown`
-3. `cd /ZMediumToMarkdown`
-4. build docker image `docker build -t zmediumtomarkdown:latest --build-arg CRON_SETTING="0 8 * * *" --build-arg ZMEDIUMTOMARKDOWN_COMMAND="-u [YOUR_MEDIUM_USERNAME]" .`
-   - ZMEDIUMTOMARKDOWN_COMMAND = ZMediumToMarkdown Command (Refer to the configuration block down below.)
-6. Refer to the configuration block down below and finish the configuration.
-7. run docker `docker run -v ./:/usr/src/app zmediumtomarkdown`
-8. have fun!
+- Convert one Medium post or download every post from a Medium username.
+- Preserve headings, blockquotes, lists, inline code, fenced code blocks, images, links, and front matter.
+- Render common embeds: GitHub Gists, Twitter / X, YouTube, Vimeo, SoundCloud, Spotify, and generic OG-image cards.
+- Download images locally and emit paths for either plain Markdown output or Jekyll projects.
+- Read paywalled posts when valid Medium `sid` / `uid` cookies are provided.
+- Skip unchanged posts by comparing `last_modified_at`, making scheduled backups practical.
+- Keep multilingual text stable, including CJK, Arabic, Hebrew, Cyrillic, and emoji.
+- Run as a Ruby gem, local CLI tool, or GitHub Action.
 
+---
 
-### Using Gem
-#### If you are familiar with ruby:
-1. make sure you have Ruby in your environment (I use `3.4.2`)
-2. make sure you have Bundle in your environment (I use `2.3.13`)
-3. type `gem install ZMediumToMarkdown` in terminal
+## Cookies & Cloudflare setup
 
-#### If you are **NOT** familiar with ruby:
-1. MacOS comes with a System Ruby pre-installed, but we are **NOT** Recommend to use that, using rvm/rbenv's Ruby instead.
-2. install [rbenv](https://github.com/rbenv/rbenv) or [rvm](https://rvm.io/) to manage Ruby environment
-3. install Ruby through rbenv/rym (you can install ruby version `2.6.X`)
-4. change the systme ruby to rbenv/rvm's Ruby
-5. type `which ruby` in terminal to make sure current Ruby is **NOT** `/usr/bin/ruby`
-6. type `gem install ZMediumToMarkdown` in terminal
+Medium's GraphQL endpoint is protected by Cloudflare. Two separate issues can interrupt a run:
 
-#### Usage
-Command: `ZMediumToMarkdown`
+1. **Cloudflare blocks the request** with an HTTP 403 "Just a moment…" challenge.
+2. **Paywalled posts** come back with `isLockedPreviewOnly: true` — only the public preview is returned without authentication.
 
-**Downloading all posts from any user**
-```
-ZMediumToMarkdown -u [USEERNAME]
-```
+The right setup depends on what you are downloading and where the command runs:
 
-**Downloading single post**
-```
-ZMediumToMarkdown -p [MEDIUM POST URL]
-```
+| Scenario | Cookies (`sid` / `uid`) | Cloudflare Worker proxy |
+|---|---|---|
+| **CI / CD** (GitHub Actions, cloud runners) | **Strongly recommended** | **Strongly recommended** |
+| **Local machine** (your laptop / desktop) | Recommended for paywalled posts | Optional |
+| **Anything that downloads paywalled posts** | **Required** | (independent) |
 
-**Update to latest version**
-```
-ZMediumToMarkdown -n
+**Empirical limits**: Medium may block after about 10 posts without cookies, or about 25 posts from CI / datacenter IPs without a Worker proxy. Configure both for scheduled backups.
+
+**Local machine — manual challenge clearance.** If Cloudflare challenges a local run, open <https://medium.com> in your browser, complete the challenge, then run the command again. CI runners cannot clear browser challenges this way, so a Worker proxy is the practical option there.
+
+### Quick start
+
+Pass cookies through environment variables to keep secrets out of shell history:
+
+```bash
+export MEDIUM_COOKIE_SID="<your sid>"
+export MEDIUM_COOKIE_UID="<your uid>"
+ZMediumToMarkdown -p "https://medium.com/..."
 ```
 
-**Remove all downloaded posts data**
-```
-ZMediumToMarkdown -c
-```
+Or pass them as flags for one-off runs. CLI flags take precedence over environment variables:
 
-**Print current ZMediumToMarkdown Version & Output Path**
-```
-ZMediumToMarkdown -v
+```bash
+ZMediumToMarkdown -p "https://medium.com/..." -s "<your sid>" -d "<your uid>"
 ```
 
-**Provide valid Medium Member cookies to access paywall posts**
-ZMediumToMarkdown requires uid and sid cookies to access paywalled posts on Medium.
+To use a Cloudflare Worker proxy, point the GraphQL and image endpoints at your Worker URLs:
 
-If you don’t provide valid Medium Member cookies, you will receive this warning message while downloading a Medium post if the post is behind a paywall:
-> This post is behind Medium's paywall. You must provide valid Medium Member login cookies to download the full post.
+| Variable | Default | Purpose |
+|---|---|---|
+| `MEDIUM_HOST` | `https://medium.com/_/graphql` | GraphQL endpoint |
+| `MIRO_MEDIUM_HOST` | `https://miro.medium.com` | Image CDN |
 
-```
-ZMediumToMarkdown --cookie_uid uid --cookie_sid sid
-```
+### Full setup guide
 
-You can obtain `cookie_uid` and `cookie_sid` from Medium by following these steps:
-1. Log in to a valid Medium Member account.
-2. Right-click anywhere on the Medium webpage.
-3. Select "Inspect" to open the Developer Tools.
-4. Navigate to the "Application" tab and locate the `sid` and `uid` values under "Cookies."
+The setup guide covers cookie extraction, Cloudflare Worker deployment, security notes, and GitHub Actions wiring:
 
-![ZhgChgLi-2024-08-11_22-30-03](https://github.com/user-attachments/assets/35229d1d-501a-4ecf-8f3e-592a02416bb1)
+> **[Setting Up Medium Cookies and a Cloudflare Worker Proxy](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy)**
 
+---
 
+## Installation
 
-#### For Jeklly Dir Friendly
+### Gem (recommended)
 
-**Downloading all posts from user with Jekyll friendly**
-```
-ZMediumToMarkdown -j [USEERNAME]
+```bash
+gem install ZMediumToMarkdown
 ```
 
-**Downloading single post with Jekyll friendly**
-```
-ZMediumToMarkdown -k [MEDIUM POST URL]
-```
+On macOS, prefer a managed Ruby (`rbenv` / `rvm` / `asdf`) over the system Ruby. Installing gems against `/usr/bin/ruby` usually requires `sudo` and modifies the OS Ruby environment.
 
-#### Manually 
-1. MacOS comes with a System Ruby pre-installed, but we are **NOT** Recommend to use that, using rvm/rbenv's Ruby instead.
-2. install [rbenv](https://github.com/rbenv/rbenv) or [rvm](https://rvm.io/) to manage Ruby environment
-3. install Ruby through rbenv/rym (you can install ruby version `2.6.X`)
-4. change the systme ruby to rbenv/rvm's Ruby
-5. type `which ruby` in terminal to make sure current Ruby is **NOT** `/usr/bin/ruby`
-6. type `gem install bundler` install RubyGem dependency manager (you can install Bundle version `2.3.x`)
-7. git clone or download this project
-8. type `cd ./ZMediumToMarkdown` go into project
-9. type `bundle install` in terminal to install project dependencies
-10. use `bundle exec ruby [USAGE Command]` in the furture (USAGE Command write down below)
+### From source
 
-#### Usage
-Execute File: `bin/ZMediumToMarkdown`
-
-**Downloading all posts from any user**
-```
-bundle exec ruby bin/ZMediumToMarkdown -u [USEERNAME]
+```bash
+git clone https://github.com/ZhgChgLi/ZMediumToMarkdown
+cd ZMediumToMarkdown
+bundle install
+bundle exec ruby bin/ZMediumToMarkdown -p "https://medium.com/..."
 ```
 
-**Downloading single post**
+---
+
+## Usage
+
 ```
-bundle exec ruby bin/ZMediumToMarkdown -p [MEDIUM POST URL]
+ZMediumToMarkdown [options]
+
+  -s, --cookie_sid SID             Medium logged-in cookie sid (or $MEDIUM_COOKIE_SID)
+  -d, --cookie_uid UID             Medium logged-in cookie uid (or $MEDIUM_COOKIE_UID)
+  -x, --medium_host URL            Cloudflare Worker proxy URL (or $MEDIUM_HOST). Strongly
+                                   recommended for CI / bulk runs — see the wiki setup guide.
+      --miro_medium_host URL       Image-CDN proxy URL (or $MIRO_MEDIUM_HOST). Optional companion to -x.
+  -u, --username USERNAME          Download every post by a Medium username
+  -p, --postURL POST_URL           Download a single post URL
+      --jekyll                     Emit Jekyll-friendly output (combine with -u or -p)
+  -n, --new                        Update to the latest version (gem install only)
+  -c, --clean                      Remove every downloaded post under cwd
+  -v, --version                    Print the current version
+  -h, --help                       Show this message
 ```
 
-**Update to latest version**
+### Examples
+
+```bash
+# Single post into ./Output/zmediumtomarkdown/
+ZMediumToMarkdown -p "https://medium.com/<user>/<slug>-<id>"
+
+# Every post by a user, Jekyll-friendly into ./_posts/zmediumtomarkdown/ + ./assets/
+ZMediumToMarkdown -u zhgchgli --jekyll
+
+# With cookies for paywalled posts or bulk downloads.
+# Env vars keep secrets out of shell history and `ps` output.
+export MEDIUM_COOKIE_SID="<your sid>"
+export MEDIUM_COOKIE_UID="<your uid>"
+ZMediumToMarkdown -u zhgchgli
+
+# With a Cloudflare Worker proxy, recommended for CI and bulk runs.
+ZMediumToMarkdown -u zhgchgli \
+  -x "https://my-worker.my-account.workers.dev/_/graphql"
+# …or via env: MEDIUM_HOST=https://my-worker.my-account.workers.dev/_/graphql
 ```
-bundle exec ruby bin/ZMediumToMarkdown -n
-```
 
-**Remove all downloaded posts data**
-```
-bundle exec ruby bin/ZMediumToMarkdown -c
-```
+> **Deprecated flags.** `-j USERNAME` and `-k POST_URL` still work for backwards compatibility but emit a warning. Use `--jekyll -u …` / `--jekyll -p …` instead.
 
-**Print current ZMediumToMarkdown Version & Output Path**
-```
-bundle exec ruby bin/ZMediumToMarkdown -v
-```
+### Output layout
 
-## Output
-### Where can I find the results of the downloaded post?
-The default path of the downloaded post will be in the `./Output` directory.
-- Downloading all posts from user：`./Ouput/users/[USERNAME]/posts/[POST_PATH_NAME]`
-- Downloading single post：`./Ouput/posts/[POST_PATH_NAME]`
-- Post's images：`[POST_PATH_NAME]/images/[POST_ID]/[IMAGE_PATH_NAME]`
+| Mode | Markdown destination | Image destination |
+|---|---|---|
+| Plain (`-p` / `-u`) | `./Output/zmediumtomarkdown/<date>-<slug>.md` | `./Output/zmediumtomarkdown/assets/<post_id>/` |
+| Jekyll (`--jekyll`) | `./_posts/zmediumtomarkdown/<date>-<post_id>.md` | `./assets/<post_id>/` |
 
-## Disclaimer
+When run with `-u`, plain mode additionally nests under `./Output/users/<username>/`.
 
-All content downloaded using ZMediumToMarkdown, including but not limited to articles, images, and videos, are subject to copyright laws and belong to their respective owners. ZMediumToMarkdown does not claim ownership of any content downloaded using this tool.
+Reruns are cheap — posts whose `last_modified_at` matches the existing front matter are skipped.
 
-Downloading and using copyrighted content without the owner's permission may be illegal and may result in legal action. ZMediumToMarkdown does not condone or support copyright infringement and will not be held responsible for any misuse of this tool.
+---
 
-Users of ZMediumToMarkdown are solely responsible for ensuring that they have the necessary permissions and rights to download and use any content obtained using this tool. ZMediumToMarkdown is not responsible for any legal issues that may arise from the misuse of this tool.
+## Quick-start templates
 
-By using ZMediumToMarkdown, users acknowledge and agree to comply with all applicable copyright laws and regulations.
+- **GitHub Actions backup, no code**: [How-to walkthrough](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/How-to-use-Github-Action-as-your-free-&-no-code-Medium-Posts-backup-service)
+- **Working Action repo example**: <https://github.com/ZhgChgLi/ZMediumToMarkdown-github-action>
 
-## Using Github Action as your [free](https://docs.github.com/en/actions/learn-github-actions/usage-limits-billing-and-administration) auto sync/backup service
-```yml
+### Minimal GitHub Action
+
+```yaml
 name: ZMediumToMarkdown
 on:
   workflow_dispatch:
   schedule:
-    - cron: "10 1 15 * *" # At 01:10 on day-of-month 15.
+    - cron: "10 1 15 * *" # 01:10 on day-of-month 15
 jobs:
-  ZMediumToMarkdown:
+  backup:
     runs-on: ubuntu-latest
     steps:
-    - name: ZMediumToMarkdown Automatic Bot
-      uses: ZhgChgLi/ZMediumToMarkdown@main
-      with:
-        command: '[USAGE Command]' # e.g. -u zhgchgli
+      - uses: ZhgChgLi/ZMediumToMarkdown@main
+        env:
+          MEDIUM_COOKIE_SID: ${{ secrets.MEDIUM_COOKIE_SID }}
+          MEDIUM_COOKIE_UID: ${{ secrets.MEDIUM_COOKIE_UID }}
+        with:
+          command: "-u zhgchgli"
 ```
-[exmaple repo](https://github.com/ZhgChgLi/ZMediumToMarkdown-github-action)
 
-## Things to know
-- If you would like to remove the ZMediumToMarkdown watermark located at the bottom of the page, you may do so. I don't mind.
-- Since ZMediumToMarkdown is not an official tool and Medium does not provide a public API for it, I cannot guarantee that the parser target will not change in the future. However, I have tried to test it for as many cases as possible. If you encounter any rendering errors, please feel free to create an issue and I will fix them as soon as possible.
+Store `MEDIUM_COOKIE_SID` / `MEDIUM_COOKIE_UID` as repository **secrets**, not repository variables, and never hard-code them in YAML. Pass them through the step's `env:` block instead of the `command:` string so they stay out of logs. For CI, also point `MEDIUM_HOST` at a Cloudflare Worker proxy; see the [setup guide](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy).
 
-## About
-- [ZhgChg.Li](https://zhgchg.li/)
-- [ZhgChgLi's Medium](https://blog.zhgchg.li/)
+---
+
+## Example output
+
+- [Original post on Medium](https://medium.com/zrealm-ios-dev/avplayer-%E5%AF%A6%E8%B8%90%E6%9C%AC%E5%9C%B0-cache-%E5%8A%9F%E8%83%BD%E5%A4%A7%E5%85%A8-6ce488898003)
+- [Converted Markdown output](example/2021-01-31-avplayer-實踐本地-cache-功能大全-6ce488898003.md)
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `Blocked by Medium's Cloudflare layer (HTTP 403)` | Cloudflare bot challenge; common after about 10 posts without cookies, or about 25 posts from CI / datacenter IPs without a Worker proxy | **Local**: open <https://medium.com> in a browser, complete the challenge, then rerun. **CI / datacenter**: set up cookies and a Cloudflare Worker proxy; see the [setup guide](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy). |
+| `This post is behind Medium's paywall…` even though I set cookies | Cookies do not belong to a Medium **Member** account that can read this post, or they have expired after inactivity | Refresh `sid` / `uid` from a logged-in browser and verify the account has access to the post. Cookies stay valid as long as they keep being used. |
+| `Error: Too Many Requests, blocked by Medium` | Hit Medium’s rate limit | Slow the schedule down or split the run; the tool already retries up to 10 times. |
+| Markdown looks fine but CJK / emoji is mojibaked | Older release — encoding regression | Upgrade to ≥ 2.6.7 (this release force-encodes all responses to UTF-8). |
+| `An iframe came back blank` | Generic embed (non-Twitter, non-gist, non-YouTube, non-widgetic) without an OG image | Expected — the source has no image to embed. The tool emits an empty line so paragraph spacing is preserved. |
+
+---
+
+## Development
+
+```bash
+bundle install
+bundle exec rake test         # run the minitest suite
+```
+
+The suite includes a 174-paragraph end-to-end fixture under `test/fixtures/`. To regenerate the golden Markdown file after intentional output changes:
+
+```bash
+UPDATE_FIXTURES=1 bundle exec rake test
+```
+
+CI runs the same `rake test` against Ruby 3.2 / 3.3 / 3.4.
+
+---
+
+## Disclaimer
+
+All content downloaded using ZMediumToMarkdown — articles, images, video — is subject to copyright and belongs to its respective owner. This tool does not claim ownership of any downloaded content.
+
+Downloading and using copyrighted content without the owner's permission may be illegal. ZMediumToMarkdown does not condone copyright infringement and will not be held responsible for misuse of this tool. Users are solely responsible for ensuring they have the necessary permissions and rights for any content they download.
+
+By using ZMediumToMarkdown you acknowledge and agree to comply with all applicable copyright laws and regulations.
+
+---
 
 ## Other works
-### Swift Libraries
-- [ZMarkupParser](https://github.com/ZhgChgLi/ZMarkupParser) is a pure-Swift library that helps you to convert HTML strings to NSAttributedString with customized style and tags.
-- [ZPlayerCacher](https://github.com/ZhgChgLi/ZPlayerCacher) is a lightweight implementation of the AVAssetResourceLoaderDelegate protocol that enables AVPlayerItem to support caching streaming files.
 
-### Integration Tools
-- [XCFolder](https://github.com/ZhgChgLi/XCFolder) is a powerful command-line tool that converts Xcode virtual groups into actual directories, reorganizing your project structure to align with Xcode groups and enabling seamless integration with modern Xcode project generation tools like Tuist and XcodeGen.
-- [ZReviewTender](https://github.com/ZhgChgLi/ZReviewTender) is a tool for fetching app reviews from the App Store and Google Play Console and integrating them into your workflow.
-- [ZMediumToMarkdown](https://github.com/ZhgChgLi/ZMediumToMarkdown) is a powerful tool that allows you to effortlessly download and convert your Medium posts to Markdown format.
-- [linkyee](https://github.com/ZhgChgLi/linkyee) is a fully customized, open-source LinkTree alternative deployed directly on GitHub Pages.
+**Swift libraries**
+- [ZMarkupParser](https://github.com/ZhgChgLi/ZMarkupParser) — pure-Swift HTML → `NSAttributedString` with customizable style/tag mapping.
+- [ZPlayerCacher](https://github.com/ZhgChgLi/ZPlayerCacher) — lightweight `AVAssetResourceLoaderDelegate` cache for `AVPlayerItem` streaming.
 
-# Donate
+**Integration tools**
+- [XCFolder](https://github.com/ZhgChgLi/XCFolder) — convert Xcode virtual groups to real directories (Tuist / XcodeGen friendly).
+- [ZReviewTender](https://github.com/ZhgChgLi/ZReviewTender) — fetch App Store / Google Play reviews into your workflow.
+- [linkyee](https://github.com/ZhgChgLi/linkyee) — open-source LinkTree alternative on GitHub Pages.
+
+---
+
+## About
+
+- <https://zhgchg.li/>
+- <https://blog.zhgchg.li/>
+
+## Donate
 
 [![Buy Me A Beer](https://github.com/user-attachments/assets/63f01edf-2aa5-4d91-8f8a-861e5b6b4feb)](https://www.paypal.com/ncp/payment/CMALMPT8UUTY2)
 
-If you find this library helpful, please consider starring the repo or recommending it to your friends.
-
-Feel free to open an issue or submit a fix/contribution via pull request. :)
+If this project helped you, please star the repo or [buy me a beer](https://www.paypal.com/ncp/payment/CMALMPT8UUTY2). PRs and issue reports welcome.
