@@ -1,6 +1,3 @@
-
-$lib = File.expand_path('../', File.dirname(__FILE__))
-
 require 'Models/Paragraph'
 require 'Helper'
 
@@ -230,7 +227,7 @@ class MarkupStyleRender
                 end
             end
 
-            tags.sort_by(&:startIndex)
+            tags = tags.sort_by(&:startIndex)
 
             response = []
             stack = []

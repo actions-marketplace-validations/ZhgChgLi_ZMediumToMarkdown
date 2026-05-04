@@ -1,5 +1,3 @@
-$lib = File.expand_path('../lib', File.dirname(__FILE__))
-
 class PathPolicy
     attr_accessor :rootPath, :path
     def initialize(rootPath, path)

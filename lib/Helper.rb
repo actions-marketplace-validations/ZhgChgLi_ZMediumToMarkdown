@@ -1,47 +1,41 @@
-$lib = File.expand_path('../lib', File.dirname(__FILE__))
-
 require 'fileutils'
 require 'date'
-require 'PathPolicy'
-require 'Post'
-require "Request"
 require 'json'
 require 'open-uri'
 require 'zip'
 require 'nokogiri'
 
+require 'PathPolicy'
+require 'Post'
+require 'Request'
+
 class Helper
+
+    MARKDOWN_ESCAPE_REGEX = /(\*|_|`|\||\\|\{|\}|\[|\]|\(|\)|#|\+|\-|\.|\!)/.freeze
 
     def self.fetchOGImage(url)
         html = Request.html(Request.URL(url))
         return "" unless html
-        image = html.search("meta[property='og:image']")
-        image.attribute('content') || ""
+        image = html.search("meta[property='og:image']").first
+        image ? (image['content'] || "") : ""
     end
 
     def self.escapeMarkdown(text)
-        text.gsub(/(\*|_|`|\||\\|\{|\}|\[|\]|\(|\)|#|\+|\-|\.|\!)/){ |x| "\\#{x}" }
+        text.gsub(MARKDOWN_ESCAPE_REGEX) { |x| "\\#{x}" }
     end
 
     def self.escapeHTML(text, toHTMLEntity = true)
         if toHTMLEntity
-            text = text.gsub(/(<)/, '&lt;')
-            text = text.gsub(/(>)/, '&gt;')
+            text = text.gsub('<', '&lt;').gsub('>', '&gt;')
         else
-            text = text.gsub(/(<)/, '\<')
-            text = text.gsub(/(>)/, '\>')
+            text = text.gsub('<', '\<').gsub('>', '\>')
         end
         text
     end
 
     def self.createDirIfNotExist(dirPath)
-        dirs = dirPath.split("/")
-        currentDir = ""
-        begin
-            dir = dirs.shift
-            currentDir = "#{currentDir}/#{dir}"
-            Dir.mkdir(currentDir) unless File.exist?(currentDir)
-        end while dirs.length > 0
+        return if dirPath.nil? || dirPath.empty?
+        FileUtils.mkdir_p(dirPath)
     end
 
     def self.makeWarningText(message)
@@ -54,28 +48,26 @@ class Helper
         puts "####################################################\n"
     end
 
+    # Pick the latest non-prerelease release from the GitHub releases JSON.
+    # Returns nil if `releases` isn't a list (e.g. a rate-limit error body).
+    def self.latestStableRelease(releases)
+        return nil unless releases.is_a?(Array)
+        releases.sort { |a, b| b["id"] <=> a["id"] }.find { |v| v["prerelease"] == false }
+    end
+
     def self.downloadLatestVersion()
         rootPath = File.expand_path('../', File.dirname(__FILE__))
-        
+
         if File.file?("#{rootPath}/ZMediumToMarkdown.gemspec")
             apiPath = 'https://api.github.com/repos/ZhgChgLi/ZMediumToMarkdown/releases'
-            versions = JSON.parse(Request.URL(apiPath).body).sort { |a,b| b["id"] <=> a["id"] }
+            releases = JSON.parse(Request.URL(apiPath).body)
+            version = latestStableRelease(releases)
+            return if version.nil?
 
-            version = nil
-            index = 0
-            while version == nil do
-                thisVersion = versions[index]
-                if thisVersion["prerelease"] == false
-                    version = thisVersion
-                    next
-                end
-                index += 1
-            end
-            
             zipFilePath = version["zipball_url"]
             puts "Downloading latest version from github..."
-            open('latest.zip', 'wb') do |fo|
-                fo.print open(zipFilePath).read
+            URI.open('latest.zip', 'wb') do |fo|
+                fo.print URI.open(zipFilePath).read
             end
 
             puts "Unzip..."
@@ -85,23 +77,21 @@ class Helper
                     fileNames.shift
                     filePath = fileNames.join("/")
                     if filePath != ''
-                        puts "Unzinp...#{filePath}"
+                        puts "Unzip...#{filePath}"
                         zipfile.extract(file, filePath) { true }
                     end
                 end
             end
             File.delete("latest.zip")
 
-            tagName = version["tag_name"]
-            puts "Update to version #{tagName} successfully!"
+            puts "Update to version #{version["tag_name"]} successfully!"
         else
             system("gem update ZMediumToMarkdown")
         end
     end
 
     def self.createPostInfo(postInfo, isPin, isLockedPreviewOnly, isForJekyll)
-        title = postInfo.title&.gsub("[","")
-        title = title&.gsub("]","")
+        title = postInfo.title&.gsub("[", "")&.gsub("]", "")
 
         tags = ""
         if !postInfo.tags.nil? && postInfo.tags.length > 0
@@ -120,10 +110,10 @@ class Helper
             result += "image:\r\n"
             result += "  path: /#{postInfo.previewImage}\r\n"
         end
-        if !isPin.nil? && isPin == true
+        if isPin == true
             result += "pin: true\r\n"
         end
-        if !isLockedPreviewOnly.nil? && isLockedPreviewOnly == true
+        if isLockedPreviewOnly == true
             result += "lockedPreviewOnly: true\r\n"
         end
 
@@ -136,8 +126,12 @@ class Helper
         result
     end
 
-    def self.printNewVersionMessageIfExists() 
-        if Helper.getRemoteVersionFromGithub() > Helper.getLocalVersion()
+    def self.printNewVersionMessageIfExists()
+        remote = Helper.getRemoteVersionFromGithub()
+        local  = Helper.getLocalVersion()
+        return if remote.nil? || local.nil?
+
+        if remote > local
             puts "##########################################################"
             puts "#####           New Version Available!!!             #####"
             puts "##### Please type `ZMediumToMarkdown -n` to update!! #####"
@@ -147,7 +141,7 @@ class Helper
 
     def self.getLocalVersion()
         rootPath = File.expand_path('../', File.dirname(__FILE__))
-        
+
         result = nil
         if File.file?("#{rootPath}/ZMediumToMarkdown.gemspec")
             gemspecContent = File.read("#{rootPath}/ZMediumToMarkdown.gemspec")
@@ -156,57 +150,21 @@ class Helper
             result = Gem.loaded_specs["ZMediumToMarkdown"].version.version
         end
 
-        if !result.nil?
-            Gem::Version.new(result)
-        else
-            nil
-        end
+        result.nil? ? nil : Gem::Version.new(result)
     end
 
     def self.getRemoteVersionFromGithub()
         apiPath = 'https://api.github.com/repos/ZhgChgLi/ZMediumToMarkdown/releases'
-        versions = JSON.parse(Request.URL(apiPath).body).sort { |a,b| b["id"] <=> a["id"] }
+        releases = JSON.parse(Request.URL(apiPath).body)
+        version = latestStableRelease(releases)
+        return nil if version.nil?
 
-        tagName = nil
-        index = 0
-        while tagName == nil do
-            thisVersion = versions[index]
-            if thisVersion["prerelease"] == false
-                tagName = thisVersion["tag_name"]
-                next
-            end
-            index += 1
-        end
-
-        if !tagName.nil?
-            Gem::Version.new(tagName.downcase.gsub! 'v','')
-        else
-            nil
-        end
+        tagName = version["tag_name"].to_s.downcase.gsub('v', '')
+        Gem::Version.new(tagName)
     end
 
-    def self.compareVersion(version1, version2)
-        if version1.major > version2.major
-            true
-        else
-            if version1.minor > version2.minor
-                true
-            else
-                if version1.patch > version2.patch
-                    true
-                else
-                    false
-                end
-            end
-        end
-    end
-
-        
     def self.createWatermark(postURL, isForJekyll)
-        jekyllOpen = ""
-        if isForJekyll
-            jekyllOpen = "{:target=\"_blank\"}"
-        end
+        jekyllOpen = isForJekyll ? "{:target=\"_blank\"}" : ""
 
         text = "\r\n\r\n\r\n"
         text += "_[Post](#{postURL})#{jekyllOpen} converted from Medium by [ZMediumToMarkdown](https://github.com/ZhgChgLi/ZMediumToMarkdown)#{jekyllOpen}._"
@@ -216,10 +174,7 @@ class Helper
     end
 
     def self.createViewFullPost(postURL, isForJekyll)
-        jekyllOpen = ""
-        if isForJekyll
-            jekyllOpen = "{:target=\"_blank\"}"
-        end
+        jekyllOpen = isForJekyll ? "{:target=\"_blank\"}" : ""
 
         text = "\r\n\r\n\r\n"
         text += "**This [post](#{postURL})#{jekyllOpen} is behind Medium's paywall, View the full [post](#{postURL})#{jekyllOpen} on Medium, converted by [ZMediumToMarkdown](https://github.com/ZhgChgLi/ZMediumToMarkdown)#{jekyllOpen}.**"

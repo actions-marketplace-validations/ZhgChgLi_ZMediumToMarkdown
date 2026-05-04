@@ -1,11 +1,12 @@
-$lib = File.expand_path('../', File.dirname(__FILE__))
-
 require 'Helper'
 require 'Parsers/PParser'
 require 'securerandom'
 
 class Paragraph
     attr_accessor :postID, :name, :orgText, :text, :type, :href, :metadata, :mixtapeMetadata, :iframe, :oliIndex, :markups, :markupLinks, :codeBlockMetadata
+
+    # Characters that need a leading backslash when emitted as plain markdown.
+    MARKDOWN_ESCAPE_REGEX = Helper::MARKDOWN_ESCAPE_REGEX
 
     class Iframe
         attr_accessor :id, :title, :type, :src
@@ -14,10 +15,6 @@ class Paragraph
             @type = json['__typename']
             @title = json['title']
             @src = json['iframeSrc']
-        end
-
-        def parse()
-
         end
     end
 
@@ -112,7 +109,7 @@ class Paragraph
         index = 0
         orgText.each_char do |char|
             
-            if char.chars.join()  =~ /(\*|_|`|\||\\|\{|\}|\[|\]|\(|\)|#|\+|\-|\.|\!)/
+            if char.chars.join() =~ MARKDOWN_ESCAPE_REGEX
                 escapeMarkup = {
                     "type" => 'ESCAPE',
                     "start" => index,

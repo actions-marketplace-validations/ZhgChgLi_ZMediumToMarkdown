@@ -1,12 +1,9 @@
-$lib = File.expand_path('../', File.dirname(__FILE__))
-
 require 'uri'
-require 'net/http'
-
-require "Request"
-require "Parsers/Parser"
-require 'Models/Paragraph'
 require 'nokogiri'
+
+require 'Request'
+require 'Parsers/Parser'
+require 'Models/Paragraph'
 require 'Helper'
 require 'ImageDownloader'
 require 'PathPolicy'
@@ -14,181 +11,141 @@ require 'PathPolicy'
 class IframeParser < Parser
     attr_accessor :nextParser, :pathPolicy, :isForJekyll
 
+    YOUTUBE_HOST = "www.youtube.com".freeze
+    GIST_HOST_REGEX = /^(https\:\/\/gist\.github\.com)/.freeze
+    EMBEDLY_HOST_REGEX = /(cdn\.embedly\.com)/.freeze
+    TWITTER_URL_REGEX = /^(https\:\/\/twitter\.com\/){1}.+(\/){1}(\d+)/.freeze
+    WIDGETIC_URL_REGEX = /^(https\:\/\/app\.widgetic\.com)/.freeze
+
     def initialize(isForJekyll)
         @isForJekyll = isForJekyll
     end
 
     def parse(paragraph)
+        return forwardToNext(paragraph) unless paragraph.type == 'IFRAME'
+        return unless paragraph.iframe
 
-        jekyllOpen = ""
-        if isForJekyll
-            jekyllOpen = "{:target=\"_blank\"}"
-        end
+        url = if paragraph.iframe.src.nil? || paragraph.iframe.src == ""
+                  "https://medium.com/media/#{paragraph.iframe.id}"
+              else
+                  paragraph.iframe.src
+              end
 
-        if paragraph.type == 'IFRAME'
-            return unless paragraph.iframe
-            if !paragraph.iframe.src.nil? && paragraph.iframe.src != ""
-                url = paragraph.iframe.src
-            else
-                url = "https://medium.com/media/#{paragraph.iframe.id}"
-            end
+        return parseYoutube(paragraph, url) if url.match?(/(www\.youtube\.com)/)
 
-            result = "[#{paragraph.iframe.title}](#{url})#{jekyllOpen}"
+        html = Request.html(Request.URL(url))
+        return "" unless html
 
-            if !url[/(www\.youtube\.com)/].nil?
-                # is youtube
-                youtubeURL = URI(URI.decode(url)).query
-                params = URI::decode_www_form(youtubeURL).to_h
-                
-                if !params["url"].nil?
-                    if isForJekyll
-                        vid = URI.decode_www_form(URI.parse(params["url"]).query || "").to_h
-                        vid = vid["v"]
+        srcEl = html.search('script').first
+        gistSrc = srcEl ? srcEl.attribute('src').to_s : ""
 
-                        result = "<iframe class=\"embed-video\" loading=\"lazy\" src=\"https://www.youtube.com/embed/#{vid}\" title=\"#{paragraph.iframe.title}\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\" allowfullscreen ></iframe>"
-                    else
-                        if !params["image"].nil?
-                            fileName = "#{paragraph.name}_#{URI(params["image"]).path.split("/").last}" #21de_default.jpg
-
-                            imageURL = params["image"]
-                            imagePathPolicy = PathPolicy.new(pathPolicy.getAbsolutePath(paragraph.postID), pathPolicy.getRelativePath(paragraph.postID))
-                            absolutePath = imagePathPolicy.getAbsolutePath(fileName)
-                            title = paragraph.iframe.title
-                            if title.nil? or title == ""
-                                title = "Youtube"
-                            end
-
-                            if  ImageDownloader.download(absolutePath, imageURL)
-                                relativePath = imagePathPolicy.getRelativePath(fileName)
-                                if isForJekyll
-                                    result = "\r\n\r\n[![#{title}](/#{relativePath} \"#{title}\")](#{params["url"]})#{jekyllOpen}\r\n\r\n"
-                                else
-                                    result = "\r\n\r\n[![#{title}](#{relativePath} \"#{title}\")](#{params["url"]})#{jekyllOpen}\r\n\r\n"
-                                end
-                            else
-                                result = "\r\n[#{title}](#{params["url"]})#{jekyllOpen}\r\n"
-                            end
-                        end
-                    end
-                end
-            else
-                html = Request.html(Request.URL(url))
-                return "" unless html
-                src = html.search('script').first
-                srce = src.attribute('src') if src
-                result = nil
-                if !srce.to_s[/^(https\:\/\/gist\.github\.com)/].nil?
-                    # is gist
-                    gist = Request.body(Request.URL(srce)).scan(/(document\.write\('){1}(.*)(\)){1}/)[1][1]
-                    gist.gsub! '\n', ''
-                    gist.gsub! '\"', '"'
-                    gist.gsub! '<\/', '</'
-                    gistHTML = Nokogiri::HTML(gist)
-
-                    gistHTML.search('a').each do |a|
-                        if a.text == 'view raw'
-                            isMarkdown = false
-                            lang = gistHTML.search('table').first['data-tagsearch-lang']
-                            if !lang.nil?
-                                lang = lang.downcase
-                                if isForJekyll and lang == "objective-c"
-                                    lang = "objectivec"
-                                elsif lang == "protocol buffer"
-                                    lang = "protobuf"
-                                end
-                            else
-                                viewRawURL = a['href']
-                                extName = File.extname(viewRawURL).delete_prefix(".")
-                                if extName == "md"
-                                    isMarkdown = true
-                                else 
-                                    lang = extName
-                                end
-                            end
-
-
-                            gistRAW = Request.body(Request.URL(a['href']))
-                            
-                            if isMarkdown
-                                result = "\n"
-
-                                result += gistRAW.chomp
-
-                                result += "\n\n"
-                            else
-                                result = "```#{lang}\n"
-
-                                result += gistRAW.chomp
-                                
-                                result += "\n```"
-                            end
-                        end
-                    end
-                else
-                    ogURL = url
-                    if !url[/(cdn\.embedly\.com)/].nil?
-                        params = URI::decode_www_form(URI(URI.decode(url)).query).to_h
-                        if !params["url"].nil?
-                            ogURL = params["url"]
-                        end
-                    end
-
-                    twitterID = ogURL[/^(https\:\/\/twitter\.com\/){1}.+(\/){1}(\d+)/, 3]
-
-                    if !twitterID.nil?
-                        uri = URI("https://api.twitter.com/1.1/statuses/show.json?simple_quoted_tweet=true&include_entities=true&tweet_mode=extended&include_cards=1&id=#{twitterID}")
-                        https = Net::HTTP.new(uri.host, uri.port)
-                        https.use_ssl = true
-                
-                        request = Net::HTTP::Get.new(uri)
-                        request['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.17.375.766 Safari/537.36';
-                        request['Authorization'] = 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA'; # twitter private api
-                
-                        response = https.request(request)
-                        if response.code.to_i == 200
-                            twitterObj = JSON.parse(response.read_body)
-                            
-                            fullText = twitterObj["full_text"]
-                            twitterObj["entities"]["user_mentions"].each do |user_mention|
-                                fullText = fullText.gsub(user_mention["screen_name"],"[#{user_mention["screen_name"]}](https://twitter.com/#{user_mention["screen_name"]})")
-                            end
-                            twitterObj["entities"]["urls"].each do |url|
-                                fullText = fullText.gsub(url["url"],"[#{url["display_url"]}](#{url["expanded_url"]})")
-                            end
-
-                            createdAt = Time.parse(twitterObj["created_at"]).strftime('%Y-%m-%d %H:%M:%S')
-                            result = "\n\n"
-                            result += "■■■■■■■■■■■■■■ \n"
-                            result += "> **[#{twitterObj["user"]["name"]}](https://twitter.com/#{twitterObj["user"]["screen_name"]})#{jekyllOpen} @ Twitter Says:** \n\n"
-                            result += "> > #{fullText} \n\n"
-                            result += "> **Tweeted at [#{createdAt}](#{ogURL})#{jekyllOpen}.** \n\n"
-                            result += "■■■■■■■■■■■■■■ \n\n"
-                        end
-                    elsif ![/^(https\:\/\/app\.widgetic\.com)/].nil?
-                        #Skip widgetic
-                        result = nil
-                    else
-                        ogImageURL = Helper.fetchOGImage(ogURL)
-
-                        title = paragraph.iframe.title
-                        if title.nil? or title == ""
-                            title = Helper.escapeMarkdown(ogURL)
-                        end
-                        
-                        if !ogImageURL.nil?
-                            result = "\r\n\r\n[![#{title}](#{ogImageURL} \"#{title}\")](#{ogURL})#{jekyllOpen}\r\n\r\n"
-                        else
-                            result = "[#{title}](#{ogURL})#{jekyllOpen}"
-                        end
-                    end
-                end
-            end
-
-            result
+        if gistSrc.match?(GIST_HOST_REGEX)
+            parseGist(gistSrc)
         else
-            if !nextParser.nil?
-                nextParser.parse(paragraph)
+            parseGenericEmbed(paragraph, url)
+        end
+    end
+
+    private
+
+    def jekyllOpen
+        isForJekyll ? "{:target=\"_blank\"}" : ""
+    end
+
+    def forwardToNext(paragraph)
+        nextParser&.parse(paragraph)
+    end
+
+    def parseYoutube(paragraph, url)
+        youtubeURL = URI(decodeURL(url)).query
+        params = URI.decode_www_form(youtubeURL || "").to_h
+        return "[#{paragraph.iframe.title}](#{url})#{jekyllOpen}" if params["url"].nil?
+
+        if isForJekyll
+            vidParams = URI.decode_www_form(URI.parse(params["url"]).query || "").to_h
+            vid = vidParams["v"]
+            "<iframe class=\"embed-video\" loading=\"lazy\" src=\"https://www.youtube.com/embed/#{vid}\" title=\"#{paragraph.iframe.title}\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\" allowfullscreen ></iframe>"
+        else
+            return "[#{paragraph.iframe.title}](#{url})#{jekyllOpen}" if params["image"].nil?
+
+            fileName = "#{paragraph.name}_#{URI(params["image"]).path.split("/").last}"
+            imagePathPolicy = PathPolicy.new(pathPolicy.getAbsolutePath(paragraph.postID), pathPolicy.getRelativePath(paragraph.postID))
+            absolutePath = imagePathPolicy.getAbsolutePath(fileName)
+            title = paragraph.iframe.title
+            title = "Youtube" if title.nil? || title == ""
+
+            if ImageDownloader.download(absolutePath, params["image"])
+                relativePath = imagePathPolicy.getRelativePath(fileName)
+                "\r\n\r\n[![#{title}](#{relativePath} \"#{title}\")](#{params["url"]})#{jekyllOpen}\r\n\r\n"
+            else
+                "\r\n[#{title}](#{params["url"]})#{jekyllOpen}\r\n"
             end
         end
+    end
+
+    def parseGist(gistSrc)
+        gist = Request.body(Request.URL(gistSrc)).scan(/(document\.write\('){1}(.*)(\)){1}/)[1][1]
+        gist = gist.gsub('\n', '').gsub('\"', '"').gsub('<\/', '</')
+        gistHTML = Nokogiri::HTML(gist)
+
+        gistHTML.search('a').each do |a|
+            next unless a.text == 'view raw'
+
+            isMarkdown = false
+            lang = gistHTML.search('table').first['data-tagsearch-lang']
+            if !lang.nil?
+                lang = lang.downcase
+                if isForJekyll && lang == "objective-c"
+                    lang = "objectivec"
+                elsif lang == "protocol buffer"
+                    lang = "protobuf"
+                end
+            else
+                viewRawURL = a['href']
+                extName = File.extname(viewRawURL).delete_prefix(".")
+                if extName == "md"
+                    isMarkdown = true
+                else
+                    lang = extName
+                end
+            end
+
+            gistRAW = Request.body(Request.URL(a['href']))
+
+            return isMarkdown ? "\n#{gistRAW.chomp}\n\n" : "```#{lang}\n#{gistRAW.chomp}\n```"
+        end
+
+        nil
+    end
+
+    def parseGenericEmbed(paragraph, url)
+        ogURL = url
+        if url.match?(EMBEDLY_HOST_REGEX)
+            params = URI.decode_www_form(URI(decodeURL(url)).query || "").to_h
+            ogURL = params["url"] if params["url"]
+        end
+
+        # The Twitter v1.1 statuses/show endpoint we used to call here is dead;
+        # render twitter URLs as a plain link instead of trying to embed.
+        if ogURL.match?(TWITTER_URL_REGEX)
+            return "[#{paragraph.iframe.title}](#{ogURL})#{jekyllOpen}"
+        end
+
+        # Skip widgetic embeds (they don't render usefully as static markdown).
+        return nil if ogURL.match?(WIDGETIC_URL_REGEX)
+
+        ogImageURL = Helper.fetchOGImage(ogURL)
+        title = paragraph.iframe.title
+        title = Helper.escapeMarkdown(ogURL) if title.nil? || title == ""
+
+        if !ogImageURL.nil? && ogImageURL != ""
+            "\r\n\r\n[![#{title}](#{ogImageURL} \"#{title}\")](#{ogURL})#{jekyllOpen}\r\n\r\n"
+        else
+            "[#{title}](#{ogURL})#{jekyllOpen}"
+        end
+    end
+
+    def decodeURL(url)
+        URI.decode_www_form_component(url).gsub(" ", "%20")
     end
 end

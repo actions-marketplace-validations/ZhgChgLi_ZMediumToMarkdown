@@ -1,5 +1,3 @@
-$lib = File.expand_path('../', File.dirname(__FILE__))
-
 require 'Models/Paragraph'
 require 'Parsers/MarkupStyleRender'
 require 'nokogiri'
