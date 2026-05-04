@@ -2,18 +2,22 @@
 
 ![ZMediumToMarkdown](https://user-images.githubusercontent.com/33706588/184416147-c2ec74d4-7107-484e-8ad2-302340cf6c1f.png)
 
-Download Medium posts and convert them to Markdown — for static blog import, automatic backups, or one-off scraping.
+**Download Medium posts and convert them to Markdown** — for static blog import (Jekyll, Hugo, etc.), automatic GitHub Actions backups, or one-off scraping. Full markup, embedded images, gists, tweets, YouTube / Vimeo / SoundCloud / Spotify, paywalled posts (with cookies), CJK / Arabic / Hebrew / emoji all round-trip cleanly.
 
 [![Gem](https://badge.fury.io/rb/ZMediumToMarkdown.svg)](https://rubygems.org/gems/ZMediumToMarkdown)
-&nbsp;[中文介紹](https://medium.com/zrealm-ios-dev/converting-medium-posts-to-markdown-ddd88a84e177)
+
+## Try it in 30 seconds
 
 ```bash
 gem install ZMediumToMarkdown
-ZMediumToMarkdown -p "https://medium.com/<USER>/<POST>" -s "$MEDIUM_COOKIE_SID" -d "$MEDIUM_COOKIE_UID"
+ZMediumToMarkdown -p "https://medium.com/<USER>/<POST>"
 ```
 
-> ⚠ **Strongly recommended: cookies + Cloudflare Worker proxy.**
-> Medium fronts its API with Cloudflare. Empirically: ~10 posts without cookies, ~25 posts without a Worker proxy from CI / datacenter IPs, before Cloudflare blocks you. Paywalled posts **require** cookies (without them you only get the preview). Full setup guide: [Setting Up Medium Cookies and a Cloudflare Worker Proxy](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy).
+That's it — the converted Markdown lands in `./Output/zmediumtomarkdown/`. No cookies needed for a public post.
+
+For **paywalled posts**, **bulk downloads**, or running on **CI / GitHub Actions**, you'll want to add cookies and (for CI) a Cloudflare Worker proxy. Empirically: Cloudflare blocks after ~10 posts without cookies, or ~25 posts from CI / datacenter IPs without a Worker proxy. Full step-by-step guide:
+
+> 📘 **[Setting Up Medium Cookies and a Cloudflare Worker Proxy →](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy)**
 
 ---
 
