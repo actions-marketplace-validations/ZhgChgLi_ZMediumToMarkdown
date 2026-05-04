@@ -20,19 +20,30 @@ class Request
             <<~MSG.strip
               Blocked by Medium's Cloudflare layer (HTTP #{http_code}) at #{url}.
 
-              This usually means the request was made from an environment Cloudflare
-              treats as a bot (cloud runners, datacenter IPs, headless browsers) and
-              no logged-in Medium cookie was provided.
+              Cloudflare's bot management layer is challenging this request.
+              Empirically: ~10 posts without cookies, ~25 posts without a Worker
+              proxy from CI / datacenter IPs, before this kicks in.
 
-              Fix:
-                1. Open https://medium.com in a logged-in browser.
-                2. Open DevTools -> Application/Storage -> Cookies -> medium.com.
-                3. Copy the values of the `sid` and `uid` cookies.
-                4. Re-run with:    -s YOUR_SID -d YOUR_UID
-                   or via env:     MEDIUM_COOKIE_SID=... MEDIUM_COOKIE_UID=...
+              Pick the fix that matches where you're running:
 
-              Background and a Cloudflare Worker proxy workaround:
-              https://zhgchg.li/posts/zrealm-dev/medium-api-%E7%88%AC%E5%8F%96%E8%B3%87%E6%96%99%E8%88%87%E7%AA%81%E7%A0%B4-cloudflare-%E9%98%B2%E8%AD%B7-%E5%AE%8C%E6%95%B4-graphql-%E6%93%8D%E4%BD%9C%E6%95%99%E5%AD%B8-88f0fb935120/
+                • Local machine (your laptop / desktop):
+                    Open https://medium.com in a normal browser and complete
+                    the Cloudflare challenge ("I'm not a robot" / "Just a
+                    moment…"). Then re-run the script — your residential IP
+                    will be cleared for a while.
+
+                • CI / CD (GitHub Actions, Docker, cloud runners):
+                    A human can't clear the challenge. Set up BOTH:
+                      1. Medium login cookies (sid / uid) — pass via env
+                         MEDIUM_COOKIE_SID and MEDIUM_COOKIE_UID, or via
+                         the -s / -d flags.
+                      2. A Cloudflare Worker proxy so requests originate
+                         from inside Cloudflare's network instead of a
+                         flagged datacenter IP. Point the tool at it via
+                         the MEDIUM_HOST env var.
+
+              Full step-by-step setup guide:
+              https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy
             MSG
         end
     end

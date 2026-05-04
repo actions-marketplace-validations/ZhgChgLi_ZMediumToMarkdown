@@ -56,8 +56,13 @@ class RequestCloudflareDetectionTest < Minitest::Test
     msg = err.message
     assert_match(/HTTP 403/, msg)
     assert_match(/https:\/\/medium.com\/_\/graphql/, msg)
-    assert_match(/-s YOUR_SID -d YOUR_UID/, msg)
+    # Tiered guidance covers both local-machine and CI / Worker-proxy paths.
+    assert_match(/Local machine/, msg)
+    assert_match(/CI \/ CD/, msg)
+    assert_match(/Cloudflare Worker proxy/, msg)
     assert_match(/MEDIUM_COOKIE_SID/, msg)
-    assert_match(/zhgchg.li/, msg)
+    assert_match(/MEDIUM_HOST/, msg)
+    # Wiki URL is the canonical setup guide.
+    assert_match(%r{github\.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy}, msg)
   end
 end

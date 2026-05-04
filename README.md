@@ -12,8 +12,8 @@ gem install ZMediumToMarkdown
 ZMediumToMarkdown -p "https://medium.com/<USER>/<POST>" -s "$MEDIUM_COOKIE_SID" -d "$MEDIUM_COOKIE_UID"
 ```
 
-> ⚠ **Strongly recommended: provide your Medium login cookies.**
-> Medium fronts its API with Cloudflare and frequently blocks unauthenticated traffic — especially from cloud runners (GitHub Actions, Docker hosts, datacenter IPs). Without cookies you may get partial output, an HTTP 403 “Just a moment...” block, or paywalled content trimmed to its preview. See [Cookie setup](#cookie-setup) below.
+> ⚠ **Strongly recommended: cookies + Cloudflare Worker proxy.**
+> Medium fronts its API with Cloudflare. Empirically: ~10 posts without cookies, ~25 posts without a Worker proxy from CI / datacenter IPs, before Cloudflare blocks you. Paywalled posts **require** cookies (without them you only get the preview). Full setup guide: [Setting Up Medium Cookies and a Cloudflare Worker Proxy](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy).
 
 ---
 
@@ -29,34 +29,28 @@ ZMediumToMarkdown -p "https://medium.com/<USER>/<POST>" -s "$MEDIUM_COOKIE_SID" 
 
 ---
 
-## Cookie setup
+## Cookies & Cloudflare setup
 
-Medium’s GraphQL endpoint is behind Cloudflare’s bot management. Without a logged-in cookie, two things happen:
+Medium's GraphQL endpoint sits behind Cloudflare's bot management. Two things can stop a run:
 
-1. **Cloudflare may reject the request** with an HTTP 403 “Just a moment…” challenge page. Cloud-based runners (GitHub Actions, datacenter IPs, headless browsers) are particularly prone to this.
-2. **Paywalled posts come back with `isLockedPreviewOnly: true`** and only the public preview text is returned by Medium — no amount of retries fixes that without authentication.
+1. **Cloudflare blocks the request** with an HTTP 403 "Just a moment…" challenge.
+2. **Paywalled posts** come back with `isLockedPreviewOnly: true` — only the public preview is returned without authentication.
 
-This tool detects both situations and prints actionable guidance, but it’s much easier to just provide cookies up front.
+The right setup depends on where you're running:
 
-### How to get your `sid` and `uid`
+| Scenario | Cookies (`sid` / `uid`) | Cloudflare Worker proxy |
+|---|---|---|
+| **CI / CD** (GitHub Actions, Docker, cloud runners) | **Strongly recommended** | **Strongly recommended** |
+| **Local machine** (your laptop / desktop) | Recommended for paywalled posts | Optional |
+| **Anything that downloads paywalled posts** | **Required** | (independent) |
 
-1. Open <https://medium.com> in a browser, logged in to your account.
-2. Open DevTools → **Application** (Chrome) or **Storage** (Firefox/Safari) → **Cookies** → `https://medium.com`.
-3. Copy the values of the `sid` and `uid` cookies.
+**Empirical limits**: ~10 posts without cookies, ~25 posts without a Worker proxy from CI / datacenter IPs, before Cloudflare blocks you. With both configured, scheduled jobs run reliably indefinitely.
 
-> Cookies expire roughly every two weeks — if downloads stop working, refresh them.
+**Local machine — manual challenge clearance.** If you only run on your own laptop, the simplest fix when Cloudflare throws a challenge is to open <https://medium.com> in a normal browser, complete the challenge yourself, then re-run — your residential IP will be cleared for a while. CI runners can't do this, which is why the Worker proxy is the only practical answer there.
 
-### Pass cookies to the CLI
+### Quick start
 
-Either as flags:
-
-```bash
-ZMediumToMarkdown -p "https://medium.com/..." \
-                  -s "<your sid>" \
-                  -d "<your uid>"
-```
-
-…or via environment variables (preferred — keeps secrets out of shell history):
+Pass cookies via env vars (preferred — keeps secrets out of shell history):
 
 ```bash
 export MEDIUM_COOKIE_SID="<your sid>"
@@ -64,21 +58,25 @@ export MEDIUM_COOKIE_UID="<your uid>"
 ZMediumToMarkdown -p "https://medium.com/..."
 ```
 
-CLI flags take precedence over environment variables.
+…or as flags (fine for one-off runs; CLI flags take precedence over env vars):
 
-### Still blocked by Cloudflare?
+```bash
+ZMediumToMarkdown -p "https://medium.com/..." -s "<your sid>" -d "<your uid>"
+```
 
-If even authenticated requests get challenged (typical when running from a datacenter IP), the most reliable workaround is to proxy traffic through a Cloudflare Worker so the request originates from inside Cloudflare’s own network. Walkthrough and complete GraphQL operation reference here:
-
-> [Medium API 爬取資料與突破 Cloudflare 防護｜完整 GraphQL 操作教學](https://zhgchg.li/posts/zrealm-dev/medium-api-%E7%88%AC%E5%8F%96%E8%B3%87%E6%96%99%E8%88%87%E7%AA%81%E7%A0%B4-cloudflare-%E9%98%B2%E8%AD%B7-%E5%AE%8C%E6%95%B4-graphql-%E6%93%8D%E4%BD%9C%E6%95%99%E5%AD%B8-88f0fb935120/)
-
-You can point the tool at your proxy via env vars:
+To proxy through a Cloudflare Worker, point the tool at your Worker URL:
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `MEDIUM_HOST` | `https://medium.com/_/graphql` | GraphQL endpoint |
 | `MIRO_MEDIUM_HOST` | `https://miro.medium.com` | Image CDN |
 | `TWITTER_SYNDICATION_HOST` | `https://cdn.syndication.twitter.com` | Tweet embed source |
+
+### Full setup guide
+
+Step-by-step instructions for obtaining cookies and deploying a Cloudflare Worker proxy (with a copy-pasteable starter script):
+
+> **[Setting Up Medium Cookies and a Cloudflare Worker Proxy](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy)** — covers both pieces end-to-end, including security notes (`sid` / `uid` are session tokens — treat them as secrets) and GitHub Actions wiring with `env:` blocks.
 
 ---
 
@@ -161,7 +159,6 @@ Reruns are cheap — posts whose `last_modified_at` matches the existing front m
 
 ## Quick-start templates
 
-- **One-click Jekyll backup**: <https://github.com/ZhgChgLi/medium-to-jekyll-starter.github.io>
 - **GitHub Actions backup, no code**: [How-to walkthrough](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/How-to-use-Github-Action-as-your-free-&-no-code-Medium-Posts-backup-service)
 - **Working Action repo example**: <https://github.com/ZhgChgLi/ZMediumToMarkdown-github-action>
 
@@ -197,8 +194,8 @@ Store `MEDIUM_COOKIE_SID` / `MEDIUM_COOKIE_UID` as repository secrets — never 
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `Blocked by Medium's Cloudflare layer (HTTP 403)` | Unauthenticated request, or your IP is on Cloudflare’s bot list | Provide cookies (`-s` / `-d` or env vars). If the IP itself is the problem, proxy via a Cloudflare Worker — see [the article](#still-blocked-by-cloudflare). |
-| `This post is behind Medium's paywall…` even though I set cookies | Cookies don’t belong to a Medium **Member** account, or they’ve expired (~2 weeks) | Refresh `sid` / `uid` from a logged-in browser; verify the account has access to the post. |
+| `Blocked by Medium's Cloudflare layer (HTTP 403)` | Cloudflare bot challenge — common after ~10 posts without cookies, ~25 from CI / datacenter IPs without a Worker proxy | **Local**: open <https://medium.com> in a browser, complete the challenge, re-run. **CI / datacenter**: set up cookies + a Cloudflare Worker proxy — see the [setup guide](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy). |
+| `This post is behind Medium's paywall…` even though I set cookies | Cookies don’t belong to a Medium **Member** account that can read this post, or they’ve expired (~2 weeks of inactivity) | Refresh `sid` / `uid` from a logged-in browser; verify the account has access to the post. Cookies stay valid as long as they keep being used. |
 | `Error: Too Many Requests, blocked by Medium` | Hit Medium’s rate limit | Slow the schedule down or split the run; the tool already retries up to 10 times. |
 | Markdown looks fine but CJK / emoji is mojibaked | Older release — encoding regression | Upgrade to ≥ 2.6.7 (this release force-encodes all responses to UTF-8). |
 | `An iframe came back blank` | Generic embed (non-Twitter, non-gist, non-YouTube, non-widgetic) without an OG image | Expected — the source has no image to embed. The tool emits an empty line so paragraph spacing is preserved. |
