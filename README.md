@@ -112,6 +112,9 @@ ZMediumToMarkdown [options]
 
   -s, --cookie_sid SID             Medium logged-in cookie sid (or $MEDIUM_COOKIE_SID)
   -d, --cookie_uid UID             Medium logged-in cookie uid (or $MEDIUM_COOKIE_UID)
+  -x, --medium_host URL            Cloudflare Worker proxy URL (or $MEDIUM_HOST). Strongly
+                                   recommended for CI / bulk runs — see the wiki setup guide.
+      --miro_medium_host URL       Image-CDN proxy URL (or $MIRO_MEDIUM_HOST). Optional companion to -x.
   -u, --username USERNAME          Download every post by a Medium username
   -p, --postURL POST_URL           Download a single post URL
       --jekyll                     Emit Jekyll-friendly output (combine with -u or -p)
@@ -135,6 +138,11 @@ ZMediumToMarkdown -u zhgchgli --jekyll
 export MEDIUM_COOKIE_SID="<your sid>"
 export MEDIUM_COOKIE_UID="<your uid>"
 ZMediumToMarkdown -u zhgchgli
+
+# With Cloudflare Worker proxy (recommended for CI / bulk runs)
+ZMediumToMarkdown -u zhgchgli \
+  -x "https://my-worker.my-account.workers.dev/_/graphql"
+# …or via env: MEDIUM_HOST=https://my-worker.my-account.workers.dev/_/graphql
 ```
 
 > **Deprecated flags.** `-j USERNAME` and `-k POST_URL` still work for backwards compatibility but emit a warning. Use `--jekyll -u …` / `--jekyll -p …` instead.

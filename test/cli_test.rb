@@ -58,6 +58,39 @@ class CLIParseArgsTest < Minitest::Test
     assert_equal 'uid_value', $cookies['uid']
   end
 
+  def test_medium_host_flag_sets_env
+    prev = ENV['MEDIUM_HOST']
+    begin
+      ENV.delete('MEDIUM_HOST')
+      parse(['-x', 'https://my-worker.example.workers.dev/_/graphql'])
+      assert_equal 'https://my-worker.example.workers.dev/_/graphql', ENV['MEDIUM_HOST']
+    ensure
+      prev.nil? ? ENV.delete('MEDIUM_HOST') : ENV['MEDIUM_HOST'] = prev
+    end
+  end
+
+  def test_medium_host_long_flag_sets_env
+    prev = ENV['MEDIUM_HOST']
+    begin
+      ENV.delete('MEDIUM_HOST')
+      parse(['--medium_host', 'https://proxy.example/_/graphql'])
+      assert_equal 'https://proxy.example/_/graphql', ENV['MEDIUM_HOST']
+    ensure
+      prev.nil? ? ENV.delete('MEDIUM_HOST') : ENV['MEDIUM_HOST'] = prev
+    end
+  end
+
+  def test_miro_medium_host_flag_sets_env
+    prev = ENV['MIRO_MEDIUM_HOST']
+    begin
+      ENV.delete('MIRO_MEDIUM_HOST')
+      parse(['--miro_medium_host', 'https://image-proxy.example'])
+      assert_equal 'https://image-proxy.example', ENV['MIRO_MEDIUM_HOST']
+    ensure
+      prev.nil? ? ENV.delete('MIRO_MEDIUM_HOST') : ENV['MIRO_MEDIUM_HOST'] = prev
+    end
+  end
+
   def test_help_flag_returns_options_with_help_text
     opts = parse(%w[-h])
     refute_nil opts[:help]
@@ -121,38 +154,76 @@ class CLIWarningTest < Minitest::Test
   def setup
     $cookies = {}
     @err = StringIO.new
+    @prev_medium_host = ENV['MEDIUM_HOST']
+    # Default = no Worker proxy configured; individual tests set MEDIUM_HOST
+    # when they want to simulate "proxy is configured".
+    ENV.delete('MEDIUM_HOST')
+  end
+
+  def teardown
+    @prev_medium_host.nil? ? ENV.delete('MEDIUM_HOST') : ENV['MEDIUM_HOST'] = @prev_medium_host
   end
 
   def test_warns_when_post_url_set_and_no_cookies
-    CLI.warnIfNoCookies({ postURL: 'https://medium.com/p/abc' }, errput: @err)
-    assert_match(/Medium login cookie/, @err.string)
+    CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
+    # Banner lists what's missing and the empirical limits + setup guidance.
+    assert_match(/Medium login cookies/, @err.string)
+    assert_match(/Cloudflare Worker proxy/, @err.string)
     assert_match(/MEDIUM_COOKIE_SID/, @err.string)
+    assert_match(/MEDIUM_HOST/, @err.string)
   end
 
   def test_warns_when_username_set_and_no_cookies
-    CLI.warnIfNoCookies({ username: 'alice' }, errput: @err)
-    assert_match(/Medium login cookie/, @err.string)
+    CLI.warnAboutMissingSetup({ username: 'alice' }, errput: @err)
+    assert_match(/Medium login cookies/, @err.string)
   end
 
-  def test_does_not_warn_when_only_sid_present
-    $cookies['sid'] = 'x'
-    CLI.warnIfNoCookies({ postURL: 'https://medium.com/p/abc' }, errput: @err)
+  def test_warns_about_proxy_only_when_cookies_present
+    # Cookies present, but no MEDIUM_HOST -> banner mentions only the proxy gap.
+    $cookies = { 'sid' => 'real_sid', 'uid' => 'real_uid' }
+    CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
+    refute_includes @err.string, 'Medium login cookies (sid / uid).'
+    assert_match(/Cloudflare Worker proxy \(MEDIUM_HOST not set/, @err.string)
+  end
+
+  def test_does_not_warn_when_cookies_and_proxy_both_present
+    $cookies = { 'sid' => 'real_sid', 'uid' => 'real_uid' }
+    ENV['MEDIUM_HOST'] = 'https://my-worker.example.workers.dev/_/graphql'
+    CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
     assert_empty @err.string
   end
 
-  def test_does_not_warn_when_only_uid_present
-    $cookies['uid'] = 'x'
-    CLI.warnIfNoCookies({ postURL: 'https://medium.com/p/abc' }, errput: @err)
+  def test_treats_default_medium_host_as_unconfigured
+    # Setting MEDIUM_HOST to the same default value Medium uses doesn't count
+    # as configuring a Worker proxy.
+    $cookies = { 'sid' => 'real_sid', 'uid' => 'real_uid' }
+    ENV['MEDIUM_HOST'] = 'https://medium.com/_/graphql'
+    CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
+    assert_match(/Cloudflare Worker proxy/, @err.string)
+  end
+
+  def test_warns_about_only_cookies_when_proxy_present
+    # Proxy present, cookies absent -> banner mentions only the cookie gap.
+    ENV['MEDIUM_HOST'] = 'https://my-worker.example.workers.dev/_/graphql'
+    CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
+    assert_match(/Medium login cookies \(sid \/ uid\)\./, @err.string)
+    refute_includes @err.string, 'Cloudflare Worker proxy (MEDIUM_HOST not set'
+  end
+
+  def test_does_not_warn_when_only_sid_present_and_proxy_set
+    $cookies['sid'] = 'x'
+    ENV['MEDIUM_HOST'] = 'https://my-worker.example.workers.dev/_/graphql'
+    CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
     assert_empty @err.string
   end
 
   def test_does_not_warn_for_version_only_invocations
-    CLI.warnIfNoCookies({ version: true }, errput: @err)
+    CLI.warnAboutMissingSetup({ version: true }, errput: @err)
     assert_empty @err.string
   end
 
   def test_does_not_warn_for_clean_only_invocations
-    CLI.warnIfNoCookies({ clean: true }, errput: @err)
+    CLI.warnAboutMissingSetup({ clean: true }, errput: @err)
     assert_empty @err.string
   end
 end

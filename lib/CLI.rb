@@ -11,37 +11,7 @@ require 'Request'
 module CLI
     COOKIE_SETUP_URL = 'https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy'.freeze
 
-    COOKIE_WARNING_BANNER = <<~BANNER.strip.freeze
-      ──────────────────────────────────────────────────────────────────────
-      ⚠  No Medium login cookie detected.
-
-      Empirical limits without setup:
-        • Without cookies         : Cloudflare blocks after ~10 posts.
-        • Without Worker proxy    : Cloudflare blocks after ~25 posts
-                                    when running from CI / datacenter IPs.
-        • Paywalled posts         : cookies are REQUIRED for full content;
-                                    without them you only get the preview.
-
-      Recommended setup:
-        • CI / CD (GitHub Actions, cloud runners):
-            STRONGLY recommend BOTH cookies AND a Cloudflare Worker proxy.
-        • Local machine:
-            Cookies recommended for paywalled posts. If a Cloudflare
-            challenge appears, the tool will automatically open
-            https://medium.com in your browser and prompt you to retry
-            once you've cleared it. Set MEDIUM_NO_AUTO_BROWSER=1 to
-            opt out and just fail fast.
-
-      Pass cookies via env (preferred — keeps secrets out of shell history):
-        MEDIUM_COOKIE_SID=... MEDIUM_COOKIE_UID=... ZMediumToMarkdown -p URL
-
-      Or via flags (fine for one-off local runs):
-        ZMediumToMarkdown -p URL -s YOUR_SID -d YOUR_UID
-
-      Full setup guide (cookies + Cloudflare Worker proxy):
-        #{COOKIE_SETUP_URL}
-      ──────────────────────────────────────────────────────────────────────
-    BANNER
+    DEFAULT_MEDIUM_HOST = 'https://medium.com/_/graphql'.freeze
 
     module_function
 
@@ -51,7 +21,7 @@ module CLI
 
         options = parseArgs(argv, errput: errput)
         loadCookiesFromEnv!
-        warnIfNoCookies(options, errput: errput)
+        warnAboutMissingSetup(options, errput: errput)
         run(options, cwd, output: output)
     end
 
@@ -66,6 +36,14 @@ module CLI
 
             opts.on('-d', '--cookie_uid UID', 'Medium logged-in cookie uid value (or set $MEDIUM_COOKIE_UID)') do |v|
                 $cookies['uid'] = v
+            end
+
+            opts.on('-x', '--medium_host URL', 'Cloudflare Worker proxy URL for Medium GraphQL (or set $MEDIUM_HOST). Strongly recommended for CI / bulk runs — see the wiki setup guide.') do |v|
+                ENV['MEDIUM_HOST'] = v
+            end
+
+            opts.on('--miro_medium_host URL', 'Cloudflare Worker proxy URL for Medium image CDN (or set $MIRO_MEDIUM_HOST). Optional companion to --medium_host.') do |v|
+                ENV['MIRO_MEDIUM_HOST'] = v
             end
 
             opts.on('-u', '--username USERNAME', 'Download all posts from a Medium username') do |v|
@@ -127,16 +105,76 @@ module CLI
         !cookieMissing?('sid') || !cookieMissing?('uid')
     end
 
-    # Only warn when the invocation will actually hit Medium - skip for
+    # Worker proxy is "configured" when MEDIUM_HOST is set to something
+    # other than the default upstream Medium URL — i.e. user pointed it
+    # at their own Cloudflare Worker (or another proxy).
+    def proxyConfigured?
+        host = ENV['MEDIUM_HOST'].to_s
+        !host.empty? && host != DEFAULT_MEDIUM_HOST
+    end
+
+    # Only warn when the invocation will actually hit Medium — skip for
     # --version, --clean, --help, --new.
-    def warnIfNoCookies(options, errput: $stderr)
-        return if cookiesPresent?
+    def warnAboutMissingSetup(options, errput: $stderr)
         return unless willHitMedium?(options)
-        errput.puts COOKIE_WARNING_BANNER
+
+        missingCookies = !cookiesPresent?
+        missingProxy   = !proxyConfigured?
+        return if !missingCookies && !missingProxy
+
+        errput.puts buildSetupBanner(missingCookies: missingCookies, missingProxy: missingProxy)
     end
 
     def willHitMedium?(options)
         !options[:postURL].nil? || !options[:username].nil?
+    end
+
+    # Builds the dynamic setup-warning banner. Header lists exactly which
+    # of (cookies, proxy) is missing so the user can act; body is static
+    # guidance covering empirical limits, scenarios, and how to pass each
+    # value via flag or env.
+    def buildSetupBanner(missingCookies:, missingProxy:)
+        lines = []
+        lines << '──────────────────────────────────────────────────────────────────────'
+        lines << '⚠  Setup notice — your run will work, but reliability is limited.'
+        lines << ''
+        lines << "What's missing:"
+        lines << '  • Medium login cookies (sid / uid).' if missingCookies
+        lines << '  • Cloudflare Worker proxy (MEDIUM_HOST not set or still default).' if missingProxy
+        lines << ''
+        lines << <<~BODY.chomp
+          Empirical limits without setup:
+            • Without cookies         : Cloudflare blocks after ~10 posts.
+            • Without Worker proxy    : Cloudflare blocks after ~25 posts
+                                        when running from CI / datacenter IPs.
+            • Paywalled posts         : cookies are REQUIRED for full content;
+                                        without them you only get the preview.
+
+          Recommended setup:
+            • CI / CD (GitHub Actions, cloud runners):
+                STRONGLY recommend BOTH cookies AND a Cloudflare Worker proxy.
+            • Local machine:
+                Cookies recommended for paywalled posts. If a Cloudflare
+                challenge appears, the tool will automatically open
+                https://medium.com in your browser and prompt you to retry
+                once you've cleared it. Set MEDIUM_NO_AUTO_BROWSER=1 to
+                opt out and just fail fast.
+
+          Pass cookies via env (preferred — keeps secrets out of shell history):
+            MEDIUM_COOKIE_SID=... MEDIUM_COOKIE_UID=... ZMediumToMarkdown -p URL
+
+          Or via flags (fine for one-off local runs):
+            ZMediumToMarkdown -p URL -s YOUR_SID -d YOUR_UID
+
+          Pass Cloudflare Worker proxy URL:
+            ZMediumToMarkdown -p URL -x https://YOUR-WORKER.workers.dev/_/graphql
+            # or via env:  MEDIUM_HOST=https://YOUR-WORKER.workers.dev/_/graphql
+
+          Full setup guide (cookies + Cloudflare Worker proxy):
+            #{COOKIE_SETUP_URL}
+          ──────────────────────────────────────────────────────────────────────
+        BODY
+        lines.join("\n")
     end
 
     def run(options, cwd, output: $stdout)
