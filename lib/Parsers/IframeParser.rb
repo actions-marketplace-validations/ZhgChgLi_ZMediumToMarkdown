@@ -3,6 +3,7 @@ require 'nokogiri'
 
 require 'Request'
 require 'Parsers/Parser'
+require 'Parsers/TwitterEmbed'
 require 'Models/Paragraph'
 require 'Helper'
 require 'ImageDownloader'
@@ -33,6 +34,13 @@ class IframeParser < Parser
 
         return parseYoutube(paragraph, url) if url.match?(/(www\.youtube\.com)/)
 
+        # Resolve embedly wrappers up front so we can dispatch on the inner
+        # URL without doing an unnecessary HTTP round-trip for hosts we
+        # already know how to handle (twitter, widgetic).
+        innerURL = unwrapEmbedly(url)
+        return parseTwitterEmbed(paragraph, innerURL) if innerURL.match?(TWITTER_URL_REGEX)
+        return nil if innerURL.match?(WIDGETIC_URL_REGEX)
+
         html = Request.html(Request.URL(url))
         return "" unless html
 
@@ -42,7 +50,7 @@ class IframeParser < Parser
         if gistSrc.match?(GIST_HOST_REGEX)
             parseGist(gistSrc)
         else
-            parseGenericEmbed(paragraph, url)
+            parseOgImageEmbed(paragraph, innerURL)
         end
     end
 
@@ -54,6 +62,28 @@ class IframeParser < Parser
 
     def forwardToNext(paragraph)
         nextParser&.parse(paragraph)
+    end
+
+    def unwrapEmbedly(url)
+        return url unless url.match?(EMBEDLY_HOST_REGEX)
+        params = URI.decode_www_form(URI(decodeURL(url)).query || "").to_h
+        params["url"] || url
+    rescue URI::InvalidURIError, ArgumentError
+        url
+    end
+
+    def parseTwitterEmbed(paragraph, ogURL)
+        twitterID = ogURL[TWITTER_URL_REGEX, 3]
+        return plainLink(paragraph, ogURL) if twitterID.nil?
+
+        TwitterEmbed.render(twitterID, ogURL, jekyllOpen: jekyllOpen) ||
+            plainLink(paragraph, ogURL)
+    end
+
+    def plainLink(paragraph, ogURL)
+        title = paragraph.iframe.title
+        title = ogURL if title.nil? || title.empty?
+        "[#{title}](#{ogURL})#{jekyllOpen}"
     end
 
     def parseYoutube(paragraph, url)
@@ -118,22 +148,7 @@ class IframeParser < Parser
         nil
     end
 
-    def parseGenericEmbed(paragraph, url)
-        ogURL = url
-        if url.match?(EMBEDLY_HOST_REGEX)
-            params = URI.decode_www_form(URI(decodeURL(url)).query || "").to_h
-            ogURL = params["url"] if params["url"]
-        end
-
-        # The Twitter v1.1 statuses/show endpoint we used to call here is dead;
-        # render twitter URLs as a plain link instead of trying to embed.
-        if ogURL.match?(TWITTER_URL_REGEX)
-            return "[#{paragraph.iframe.title}](#{ogURL})#{jekyllOpen}"
-        end
-
-        # Skip widgetic embeds (they don't render usefully as static markdown).
-        return nil if ogURL.match?(WIDGETIC_URL_REGEX)
-
+    def parseOgImageEmbed(paragraph, ogURL)
         ogImageURL = Helper.fetchOGImage(ogURL)
         title = paragraph.iframe.title
         title = Helper.escapeMarkdown(ogURL) if title.nil? || title == ""
