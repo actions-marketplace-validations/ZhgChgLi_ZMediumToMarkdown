@@ -94,18 +94,24 @@ class Request
     end
 
     def self.html(response)
-      if response.nil? || (response && response.code.to_i != 200)
-        nil
-      else
-        Nokogiri::HTML(response.read_body)
-      end
+      body = readBodyAsUTF8(response)
+      body.nil? ? nil : Nokogiri::HTML(body)
     end
 
     def self.body(response)
-      if response.nil? || (response && response.code.to_i != 200)
-        nil
-      else
-        response.read_body
-      end
+      readBodyAsUTF8(response)
+    end
+
+    # Net::HTTP#read_body returns ASCII-8BIT (binary). Without an explicit
+    # UTF-8 tag, downstream parsers misinterpret multi-byte sequences:
+    # Nokogiri's encoding sniffer falls back to ISO-8859-1 for inline
+    # <script> contents, which then mojibakes the embedded JSON (e.g. CJK
+    # comes back as garbage like "ä½¿" instead of "使").
+    def self.readBodyAsUTF8(response)
+      return nil if response.nil? || response.code.to_i != 200
+      body = response.read_body
+      return body if body.nil? || body.empty?
+      body.force_encoding(Encoding::UTF_8)
+      body
     end
 end
