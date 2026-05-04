@@ -20,7 +20,7 @@ ZMediumToMarkdown -p "https://medium.com/<USER>/<POST>" -s "$MEDIUM_COOKIE_SID" 
 ## Features
 
 - Download a single post, or every post by a Medium username
-- Full Medium markup support: headings, blockquotes, lists, inline code, code fences with language, images (downloaded locally), embedded gists (rewritten to fenced code), tweets (rendered as blockquotes via the public syndication endpoint), YouTube cards, generic OG-image embeds
+- Full Medium markup support: headings, blockquotes, lists, inline code, code fences with language, images (downloaded locally), embedded gists (rewritten to fenced code), tweets (rendered as blockquotes via the public syndication endpoint — supports both `twitter.com` and `x.com`), YouTube / Vimeo / SoundCloud / Spotify embeds (Jekyll mode emits player iframes; plain mode renders local-thumbnail cards), generic OG-image embeds for everything else
 - Paywalled posts supported when authenticated cookies are provided
 - Jekyll-friendly mode (front matter, `_posts/` layout, asset paths, `{:target="_blank"}` link markers)
 - Skip-already-downloaded based on `last_modified_at` so it’s safe to run on a cron
