@@ -19,7 +19,7 @@ GEM
     rake (13.4.2)
     rubyzip (2.3.2)
     timeout (0.4.3)
-    uri (1.0.3)
+    uri (1.0.4)
 
 PLATFORMS
   ruby
