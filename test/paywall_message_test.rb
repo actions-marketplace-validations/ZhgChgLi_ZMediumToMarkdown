@@ -13,14 +13,15 @@ class PaywallMessageTest < Minitest::Test
   def test_prompts_to_provide_cookies_when_none_present
     $cookies = {}
     msg = @fetcher.paywallMessage
-    assert_match(/Provide your Medium Member cookies/, msg)
-    assert_match(/-s SID -d UID/, msg)
+    assert_match(/REQUIRED/, msg)
+    assert_match(/sid \/ uid/, msg)
+    assert_match(%r{github\.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy}, msg)
   end
 
   def test_prompts_to_provide_cookies_when_jar_has_blank_values
     $cookies = { 'sid' => '', 'uid' => '' }
     msg = @fetcher.paywallMessage
-    assert_match(/Provide your Medium Member cookies/, msg)
+    assert_match(/REQUIRED/, msg)
   end
 
   def test_suggests_cookie_validity_when_cookies_were_already_set
@@ -28,7 +29,7 @@ class PaywallMessageTest < Minitest::Test
     msg = @fetcher.paywallMessage
     assert_match(/cookies don't grant access/, msg)
     assert_match(/Medium Member account/, msg)
-    assert_match(/expire/, msg)
+    assert_match(/sliding window|expire/, msg)
   end
 
   def test_treats_partial_cookies_as_provided

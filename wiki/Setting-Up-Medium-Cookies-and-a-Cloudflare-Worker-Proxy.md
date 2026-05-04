@@ -1,14 +1,25 @@
 # Setting Up Medium Cookies and a Cloudflare Worker Proxy
 
-Medium's GraphQL endpoint sits behind Cloudflare's bot management layer. Out of the box, two things tend to break unauthenticated runs:
+Medium's GraphQL endpoint sits behind Cloudflare's bot management layer. There are two independent things that can stop a run from completing:
 
-1. **Cloudflare blocks the request** with an HTTP 403 "Just a moment…" challenge — particularly common from cloud runners (GitHub Actions, datacenter IPs, headless browsers).
-2. **Paywalled posts** come back with `isLockedPreviewOnly: true` and only the public preview text is returned by Medium.
+1. **Cloudflare blocks the request** with an HTTP 403 "Just a moment…" challenge.
+2. **Paywalled posts** come back with `isLockedPreviewOnly: true`, returning only the public preview text.
 
-To run reliably, both of the following are **strongly recommended**. They solve different problems and stack — set up both for the smoothest experience.
+The right setup depends on **where you're running** and **what you're trying to download**:
 
-- **Medium login cookies (`sid`, `uid`)** — unlock paywalled posts and authenticate you as a Medium Member. Required for full content.
-- **Cloudflare Worker proxy** — make requests originate from inside Cloudflare's own network so datacenter IPs don't get bot-checked. Required for reliable runs from CI / Docker / cloud runners.
+| Scenario | Cookies (`sid` / `uid`) | Cloudflare Worker proxy |
+|---|---|---|
+| **CI / CD** (GitHub Actions, Docker, cloud runners) | **Strongly recommended** | **Strongly recommended** |
+| **Local machine** (your laptop / desktop) | Recommended for paywalled posts | Optional — see below |
+| **Anything that downloads paywalled posts** | **Required** | (independent) |
+
+**Empirical limits** (rule of thumb, from project testing):
+
+- Without cookies, you can typically pull **~10 posts** before Cloudflare starts blocking.
+- Without a Cloudflare Worker proxy, you can typically pull **~25 posts** from a datacenter / CI IP before Cloudflare starts blocking.
+- With both configured, scheduled jobs run reliably for indefinite periods.
+
+**Local machine — manual challenge clearance.** If you only run on your own laptop and Cloudflare occasionally throws a "Just a moment…" challenge, the simplest fix is to **open <https://medium.com> in a normal browser, complete the challenge yourself**, then re-run the script — Cloudflare's clearance cookie will let your IP through for a while. This works because residential IPs aren't on Cloudflare's bot list; you're only being challenged because your script lacks browser fingerprints. CI runners can't do this (no human, no browser), which is why the Worker proxy is the only practical answer there.
 
 ---
 

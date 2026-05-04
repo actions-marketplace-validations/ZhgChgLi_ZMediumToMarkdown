@@ -9,26 +9,36 @@ require 'Request'
 # All CLI-side concerns for the `ZMediumToMarkdown` executable. Pulled out
 # of bin/ so it can be exercised by unit tests without spawning processes.
 module CLI
-    COOKIE_SETUP_URL = 'https://zhgchg.li/posts/zrealm-dev/medium-api-%E7%88%AC%E5%8F%96%E8%B3%87%E6%96%99%E8%88%87%E7%AA%81%E7%A0%B4-cloudflare-%E9%98%B2%E8%AD%B7-%E5%AE%8C%E6%95%B4-graphql-%E6%93%8D%E4%BD%9C%E6%95%99%E5%AD%B8-88f0fb935120/'.freeze
+    COOKIE_SETUP_URL = 'https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy'.freeze
 
     COOKIE_WARNING_BANNER = <<~BANNER.strip.freeze
       ──────────────────────────────────────────────────────────────────────
       ⚠  No Medium login cookie detected.
 
-      Medium's Cloudflare layer often blocks unauthenticated requests
-      (especially from cloud runners / CI / Docker), and paywalled posts
-      can't be fetched in full. Strongly recommended to provide cookies:
+      Empirical limits without setup:
+        • Without cookies         : Cloudflare blocks after ~10 posts.
+        • Without Worker proxy    : Cloudflare blocks after ~25 posts
+                                    when running from CI / datacenter IPs.
+        • Paywalled posts         : cookies are REQUIRED for full content;
+                                    without them you only get the preview.
 
-        ZMediumToMarkdown -p URL -s YOUR_SID -d YOUR_UID
-        # or via env (less likely to leak into shell history):
+      Recommended setup:
+        • CI / CD (GitHub Actions, Docker, cloud runners):
+            STRONGLY recommend BOTH cookies AND a Cloudflare Worker proxy.
+        • Local machine:
+            Cookies recommended for paywalled posts. If a Cloudflare
+            challenge appears, the tool will automatically open
+            https://medium.com in your browser and prompt you to retry
+            once you've cleared it. Set MEDIUM_NO_AUTO_BROWSER=1 to
+            opt out and just fail fast.
+
+      Pass cookies via env (preferred — keeps secrets out of shell history):
         MEDIUM_COOKIE_SID=... MEDIUM_COOKIE_UID=... ZMediumToMarkdown -p URL
 
-      How to get sid / uid:
-        1. Open https://medium.com in a browser, logged in.
-        2. DevTools -> Application/Storage -> Cookies -> medium.com.
-        3. Copy the values of the `sid` and `uid` cookies.
+      Or via flags (fine for one-off local runs):
+        ZMediumToMarkdown -p URL -s YOUR_SID -d YOUR_UID
 
-      Background and a Cloudflare Worker proxy workaround:
+      Full setup guide (cookies + Cloudflare Worker proxy):
         #{COOKIE_SETUP_URL}
       ──────────────────────────────────────────────────────────────────────
     BANNER
