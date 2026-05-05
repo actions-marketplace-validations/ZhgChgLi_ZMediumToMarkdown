@@ -91,12 +91,17 @@ class InteractiveCloudflareRecoveryTest < Minitest::Test
   end
 
   # ---------- run (interactive flow) ----------
+  # The two run-tests below force the default-browser fallback by stubbing
+  # ChromeAuth.available? to false. The Chrome path is exercised separately
+  # so we don't accidentally launch a real browser in CI.
 
   def test_run_prints_guidance_and_returns_true_when_user_presses_enter
     err = StringIO.new
     input = StringIO.new("\n")  # user pressed Enter
-    confirmed = Recovery.run('https://medium.com/_/graphql',
-                             errput: err, input: input, autoOpen: false)
+    confirmed = ChromeAuth.stub :available?, false do
+      Recovery.run('https://medium.com/_/graphql',
+                   errput: err, input: input, autoOpen: false)
+    end
     assert confirmed
     assert_match(/Cloudflare bot challenge detected/, err.string)
     assert_match(/MEDIUM_NO_AUTO_BROWSER/, err.string)
@@ -104,17 +109,67 @@ class InteractiveCloudflareRecoveryTest < Minitest::Test
 
   def test_run_returns_false_on_eof
     # gets returns nil at EOF (e.g. user hit Ctrl-D).
-    confirmed = Recovery.run('https://example.com',
-                             errput: StringIO.new, input: StringIO.new, autoOpen: false)
+    confirmed = ChromeAuth.stub :available?, false do
+      Recovery.run('https://example.com',
+                   errput: StringIO.new, input: StringIO.new, autoOpen: false)
+    end
     refute confirmed
   end
 
-  # ---------- once-per-process flag on Request ----------
+  def test_run_uses_chrome_flow_when_available
+    captured = nil
+    fake_login = ->(errput:, input:, openURL:) {
+      captured = openURL
+      { 'sid' => 'newsid', 'uid' => 'newuid', 'cf_clearance' => 'cfc' }
+    }
+    err = StringIO.new
+    $cookies = {}
 
-  def test_resetCloudflareInteractiveResolution_clears_the_flag
-    # Just verify the helper exists and runs; behavior is exercised in
-    # request_cloudflare_test.rb where we trigger the gate.
-    Request.resetCloudflareInteractiveResolution!
-    assert true
+    confirmed = ChromeAuth.stub(:available?, true) do
+      ChromeAuth.stub(:login!, fake_login) do
+        Recovery.run('https://medium.com/_/graphql',
+                     errput: err, input: StringIO.new, autoOpen: false)
+      end
+    end
+
+    assert confirmed
+    assert_equal ChromeAuth::REFRESH_URL, captured
+    assert_equal 'newsid', $cookies['sid']
+    assert_equal 'newuid', $cookies['uid']
+    assert_equal 'cfc',    $cookies['cf_clearance']
+    assert_match(/Opening Chrome/, err.string)
   end
+
+  def test_run_falls_back_to_default_browser_when_chrome_login_raises
+    boom = ->(*_args, **_kwargs) { raise 'boom' }
+    err = StringIO.new
+    input = StringIO.new("\n")
+
+    confirmed = ChromeAuth.stub(:available?, true) do
+      ChromeAuth.stub(:login!, boom) do
+        # Stub openInBrowser too so the fallback doesn't actually shell
+        # out to `open`/`xdg-open` and pop a real browser in CI.
+        Recovery.stub(:openInBrowser, ->(*_) {}) do
+          Recovery.send(:runChromeFlow, 'https://medium.com/_/graphql',
+                         errput: err, input: input)
+        end
+      end
+    end
+
+    assert confirmed
+    assert_match(/Chrome auto-recovery failed/, err.string)
+    assert_match(/Cloudflare bot challenge detected/, err.string)
+  end
+
+  def test_run_chrome_flow_returns_false_when_no_cookies_collected
+    err = StringIO.new
+    confirmed = ChromeAuth.stub(:available?, true) do
+      ChromeAuth.stub(:login!, ->(**_) { {} }) do
+        Recovery.send(:runChromeFlow, 'https://medium.com/_/graphql',
+                       errput: err, input: StringIO.new)
+      end
+    end
+    refute confirmed
+  end
+
 end

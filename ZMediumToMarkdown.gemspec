@@ -15,4 +15,5 @@ Gem::Specification.new do |gem|
     gem.add_dependency 'net-http', '~> 0.1.0'
     gem.add_dependency 'rubyzip', '~> 2.3.2'
     gem.add_dependency 'uri', '>= 1.0.4', '< 2.0'
+    gem.add_dependency 'ferrum', '~> 0.15'
 end

@@ -52,7 +52,7 @@ The right setup depends on what you are downloading and where the command runs:
 
 **Empirical limits**: Medium may block after about 10 posts without cookies, or about 25 posts from CI / datacenter IPs without a Worker proxy. Configure both for scheduled backups.
 
-**Local machine — manual challenge clearance.** If Cloudflare challenges a local run, open <https://medium.com> in your browser, complete the challenge, then run the command again. CI runners cannot clear browser challenges this way, so a Worker proxy is the practical option there.
+**Local machine — auto recovery on Cloudflare block.** If Cloudflare blocks a run on a TTY and Google Chrome is installed, the tool opens a Chrome window at <https://medium.com>; sign in / clear the challenge, then `sid` / `uid` / `cf_clearance` / `_cfuvid` are captured into an encrypted cache at `~/.zmediumtomarkdown` and the request retries. Pass `--non-interactive` (or set `MEDIUM_NO_AUTO_BROWSER=1`) to skip the prompt and fail fast instead. CI runners cannot clear browser challenges this way, so a Worker proxy is the practical option there.
 
 ### Quick start
 
@@ -113,9 +113,15 @@ ZMediumToMarkdown [options]
 
   -s, --cookie_sid SID             Medium logged-in cookie sid (or $MEDIUM_COOKIE_SID)
   -d, --cookie_uid UID             Medium logged-in cookie uid (or $MEDIUM_COOKIE_UID)
+      --cookie_cf_clearance VALUE  Cloudflare cf_clearance cookie (or $MEDIUM_COOKIE_CF_CLEARANCE).
+                                   Short-term Cloudflare unblocking; expires ~30 min.
+      --cookie_cfuvid VALUE        Cloudflare _cfuvid cookie (or $MEDIUM_COOKIE_CFUVID).
+                                   Companion to cf_clearance.
   -x, --medium_host URL            Cloudflare Worker proxy URL (or $MEDIUM_HOST). Strongly
                                    recommended for CI / bulk runs — see the wiki setup guide.
       --miro_medium_host URL       Image-CDN proxy URL (or $MIRO_MEDIUM_HOST). Optional companion to -x.
+      --non-interactive            Never prompt or open Chrome on a Cloudflare block. CI runners
+                                   auto-detect this; use the flag to force the same behavior on a TTY.
   -u, --username USERNAME          Download every post by a Medium username
   -p, --postURL POST_URL           Download a single post URL
       --jekyll                     Emit Jekyll-friendly output (combine with -u or -p)
@@ -233,7 +239,7 @@ Store `MEDIUM_COOKIE_SID` / `MEDIUM_COOKIE_UID` as repository **secrets**, not r
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `Blocked by Medium's Cloudflare layer (HTTP 403)` | Cloudflare bot challenge; common after about 10 posts without cookies, or about 25 posts from CI / datacenter IPs without a Worker proxy | **Local**: open <https://medium.com> in a browser, complete the challenge, then rerun. **CI / datacenter**: set up cookies and a Cloudflare Worker proxy; see the [setup guide](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy). |
+| `Blocked by Medium's Cloudflare layer (HTTP 403)` | Cloudflare bot challenge; common after about 10 posts without cookies, or about 25 posts from CI / datacenter IPs without a Worker proxy | **Local**: on a TTY the tool auto-opens Chrome to clear the challenge and refresh cookies (cached at `~/.zmediumtomarkdown`). If Chrome is not installed, open <https://medium.com> in any browser, clear the challenge, then rerun. **CI / datacenter**: set up cookies and a Cloudflare Worker proxy — see the [setup guide](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy). |
 | `This post is behind Medium's paywall…` even though I set cookies | Cookies do not belong to a Medium **Member** account that can read this post, or they have expired after inactivity | Refresh `sid` / `uid` from a logged-in browser and verify the account has access to the post. Cookies stay valid as long as they keep being used. |
 | `Error: Too Many Requests, blocked by Medium` | Hit Medium’s rate limit | Slow the schedule down or split the run; the tool already retries up to 10 times. |
 | Markdown looks fine but CJK / emoji is mojibaked | Older release — encoding regression | Upgrade to ≥ 2.6.7 (this release force-encodes all responses to UTF-8). |
