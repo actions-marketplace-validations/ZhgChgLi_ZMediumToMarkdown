@@ -30,6 +30,7 @@ For **paywalled posts**, **bulk downloads**, or **CI / GitHub Actions**, configu
 - Read paywalled posts when valid Medium `sid` / `uid` cookies are provided.
 - Skip unchanged posts by comparing `last_modified_at`, making scheduled backups practical.
 - Keep multilingual text stable, including CJK, Arabic, Hebrew, Cyrillic, and emoji.
+- Stream rendered Markdown to stdout for embedding callers (e.g. [mcp-medium-reader](https://github.com/ZhgChgLi/mcp-medium-reader)) via `--stdout` / `--list`, no filesystem writes.
 - Run as a Ruby gem, local CLI tool, or GitHub Action.
 
 ---
@@ -118,6 +119,11 @@ ZMediumToMarkdown [options]
   -u, --username USERNAME          Download every post by a Medium username
   -p, --postURL POST_URL           Download a single post URL
       --jekyll                     Emit Jekyll-friendly output (combine with -u or -p)
+      --stdout                     Render Markdown to stdout; skip all image/asset downloads.
+                                   Use with -p or -u. Logs and banners go to stderr.
+      --list                       With -u, emit one NDJSON line per post (title, url, dates,
+                                   tags, etc.) to stdout. Skips bodies and image downloads.
+      --limit N                    Cap the number of posts processed by -u in --stdout / --list.
   -n, --new                        Update to the latest version (gem install only)
   -c, --clean                      Remove every downloaded post under cwd
   -v, --version                    Print the current version
@@ -157,6 +163,33 @@ ZMediumToMarkdown -u zhgchgli \
 When run with `-u`, plain mode additionally nests under `./Output/users/<username>/`.
 
 Reruns are cheap — posts whose `last_modified_at` matches the existing front matter are skipped.
+
+---
+
+## Embedding callers — `--stdout` / `--list`
+
+The gem can also be invoked as a backend for tools that need rendered Markdown without filesystem side effects — most notably the [`mcp-medium-reader`](https://github.com/ZhgChgLi/mcp-medium-reader) MCP server, which exposes Medium reading to LLMs.
+
+In `--stdout` / `--list` mode:
+
+- Markdown / NDJSON is written to **stdout**; banners, progress, and warnings go to **stderr**.
+- **No filesystem writes**, no `Output/` directory, no `assets/` directory.
+- **No image downloads** — image references stay as remote `miro.medium.com` URLs (or `MIRO_MEDIUM_HOST` proxy if set).
+- Skip-already-downloaded checks are bypassed; the post is rendered fresh every time.
+
+```bash
+# Stream a single post's Markdown to stdout.
+ZMediumToMarkdown --stdout -p "https://medium.com/<user>/<slug>-<id>"
+
+# Stream every post by a user, separated by `\n\n---\n\n`. --limit caps the count.
+ZMediumToMarkdown --stdout -u zhgchgli --limit 5
+
+# List a user's posts as NDJSON (one JSON object per line). No bodies.
+ZMediumToMarkdown --list -u zhgchgli --limit 20
+# {"title":"…","url":"…","creator":"…","firstPublishedAt":"…","latestPublishedAt":"…","tags":["…"],"description":"…","pin":false}
+```
+
+Cookies and Worker-proxy env vars apply the same way as in normal mode.
 
 ---
 
@@ -242,6 +275,7 @@ By using ZMediumToMarkdown you acknowledge and agree to comply with all applicab
 - [ZPlayerCacher](https://github.com/ZhgChgLi/ZPlayerCacher) — lightweight `AVAssetResourceLoaderDelegate` cache for `AVPlayerItem` streaming.
 
 **Integration tools**
+- [mcp-medium-reader](https://github.com/ZhgChgLi/mcp-medium-reader) — macOS MCP server that wraps this gem so LLMs (Claude Desktop, etc.) can read Medium posts.
 - [XCFolder](https://github.com/ZhgChgLi/XCFolder) — convert Xcode virtual groups to real directories (Tuist / XcodeGen friendly).
 - [ZReviewTender](https://github.com/ZhgChgLi/ZReviewTender) — fetch App Store / Google Play reviews into your workflow.
 - [linkyee](https://github.com/ZhgChgLi/linkyee) — open-source LinkTree alternative on GitHub Pages.
