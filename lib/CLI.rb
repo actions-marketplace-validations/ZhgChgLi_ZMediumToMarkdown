@@ -156,7 +156,7 @@ module CLI
     # and how to pass each value via flag or env.
     def buildSetupBanner(missingCookies:, missingProxy:, missingImageProxy:)
         lines = []
-        lines << '────────────────────────────────────────────────────────────────────'
+        lines << '──────────────────────────────────────────────────────────────────────'
         lines << '⚠  Setup notice — your run will work, but reliability is limited.'
         lines << ''
         lines << "What's missing:"
@@ -198,7 +198,7 @@ module CLI
 
           Full setup guide (cookies + Cloudflare Worker proxy):
             #{COOKIE_SETUP_URL}
-          ────────────────────────────────────────────────────────────────────
+          ──────────────────────────────────────────────────────────────────────
         BODY
         lines.join("\n")
     end
@@ -234,24 +234,25 @@ module CLI
             return
         end
 
-        return unless willHitMedium?(options)
-
-        fetcher = ZMediumFetcher.new
-        fetcher.isForJekyll = options[:jekyll] == true
-
         # --stdout / --list path: render to the given output stream, skip
         # all filesystem writes and asset downloads. Progress goes to errput
         # so stdout stays pure markdown / NDJSON for embedding callers.
+        # Handled before willHitMedium? so the --list-without-username guard
+        # surfaces an error instead of silently no-op'ing.
         if options[:stdout] || options[:list]
+            if options[:list] && options[:username].nil?
+                errput.puts '--list requires -u/--username'
+                return
+            end
+            return unless willHitMedium?(options)
+
+            fetcher = ZMediumFetcher.new
+            fetcher.isForJekyll = options[:jekyll] == true
             fetcher.stdoutIO = output
             fetcher.stdoutMode = true
             fetcher.progress.io = errput
 
             if options[:list]
-                if options[:username].nil?
-                    errput.puts '--list requires -u/--username'
-                    return
-                end
                 fetcher.listPostsByUsername(options[:username], options[:limit])
             elsif options[:postURL]
                 fetcher.downloadPost(options[:postURL], nil, nil)
@@ -260,6 +261,11 @@ module CLI
             end
             return
         end
+
+        return unless willHitMedium?(options)
+
+        fetcher = ZMediumFetcher.new
+        fetcher.isForJekyll = options[:jekyll] == true
 
         targetPolicy = pathPolicyFor(cwd, fetcher.isForJekyll)
 
