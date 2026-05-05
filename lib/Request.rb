@@ -1,5 +1,7 @@
 require 'net/http'
 require 'nokogiri'
+require 'ChromeAuth'
+require 'CookieCache'
 
 class Request
     # Raised when Medium's Cloudflare layer blocks the request (typically
@@ -27,20 +29,22 @@ class Request
               Pick the fix that matches where you're running:
 
                 • Local machine (your laptop / desktop):
-                    Open https://medium.com in a normal browser and complete
-                    the Cloudflare challenge ("I'm not a robot" / "Just a
-                    moment…"). Then re-run the script — your residential IP
-                    will be cleared for a while.
+                    Re-run on a TTY without --non-interactive to trigger
+                    the Chrome auto-login flow (captures sid / uid /
+                    cf_clearance / _cfuvid). Or open https://medium.com
+                    in a normal browser and clear the challenge by hand.
 
                 • CI / CD (GitHub Actions, cloud runners):
                     A human can't clear the challenge. Set up BOTH:
                       1. Medium login cookies (sid / uid) — pass via env
                          MEDIUM_COOKIE_SID and MEDIUM_COOKIE_UID, or via
-                         the -s / -d flags.
+                         the -s / -d flags. Optionally add cf_clearance
+                         / _cfuvid via MEDIUM_COOKIE_CF_CLEARANCE /
+                         MEDIUM_COOKIE_CFUVID for short-term unblocking.
                       2. A Cloudflare Worker proxy so requests originate
                          from inside Cloudflare's network instead of a
                          flagged datacenter IP. Point the tool at it via
-                         the MEDIUM_HOST env var.
+                         the MEDIUM_HOST env var. (Recommended.)
 
               Full step-by-step setup guide:
               https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy
@@ -100,9 +104,42 @@ class Request
         end
 
         # Run the interactive recovery flow. Returns true if the user
-        # confirmed they cleared the challenge, false if they pressed Ctrl-D
+        # cleared the challenge (and, when Chrome is available, we
+        # successfully refreshed cookies); false if they pressed Ctrl-D
         # (EOF) or otherwise gave up.
+        #
+        # Two paths:
+        #   1. ChromeAuth available → drive Chrome via ferrum; on success
+        #      sid/uid/cf_clearance/_cfuvid land in $cookies and the cache.
+        #   2. Otherwise → legacy fallback: open default browser, ask the
+        #      user to clear the challenge by hand, retry without new cookies.
         def run(url, errput: $stderr, input: $stdin, autoOpen: true)
+            if ChromeAuth.available?
+                return runChromeFlow(url, errput: errput, input: input)
+            end
+
+            runDefaultBrowserFlow(url, errput: errput, input: input, autoOpen: autoOpen)
+        end
+
+        def runChromeFlow(url, errput:, input:)
+            errput.puts <<~MSG
+
+              ──────────────────────────────────────────────────────────────────────
+              ⚠  Cloudflare bot challenge detected at #{url}.
+                 Opening Chrome so you can clear it (and refresh login if needed).
+              ──────────────────────────────────────────────────────────────────────
+
+            MSG
+            cookies = ChromeAuth.login!(errput: errput, input: input,
+                                         openURL: ChromeAuth::REFRESH_URL)
+            cookies.each { |k, v| $cookies[k] = v unless v.to_s.empty? }
+            !cookies.empty?
+        rescue StandardError => e
+            errput.puts "(Chrome auto-recovery failed: #{e.class}: #{e.message}. Falling back to default browser.)"
+            runDefaultBrowserFlow(url, errput: errput, input: input, autoOpen: true)
+        end
+
+        def runDefaultBrowserFlow(url, errput:, input:, autoOpen:)
             errput.puts <<~MSG
 
               ──────────────────────────────────────────────────────────────────────
@@ -114,6 +151,7 @@ class Request
                 2. Complete the "Just a moment…" / CAPTCHA challenge there.
                 3. Come back here and press Enter to retry.
 
+              (Install Google Chrome to enable auto-cookie capture next time.)
               (To disable this prompt and just fail fast, set #{DISABLE_ENV_VAR}=1.)
               ──────────────────────────────────────────────────────────────────────
 
@@ -128,12 +166,10 @@ class Request
         end
     end
 
-    @@cloudflareInteractiveResolutionAttempted = false
-
-    # Test helper: reset the once-per-process recovery flag.
-    def self.resetCloudflareInteractiveResolution!
-        @@cloudflareInteractiveResolutionAttempted = false
-    end
+    # Cap how many times a single self.URL call chain can fall through
+    # the Cloudflare-recovery branch, so a user who keeps saying yes to
+    # the prompt while Medium keeps blocking can't loop forever.
+    CLOUDFLARE_RECOVERY_LIMIT = 5
 
     def self.URL(url, method = 'GET', data = nil, retryCount = 0)
         retryCount += 1
@@ -204,11 +240,13 @@ class Request
         end
 
         if cloudflareBlocked?(response)
-            # Once-per-process: if we're on an interactive TTY, ask the user
-            # to clear the challenge in a browser and retry. CI / non-TTY
-            # environments fall straight through to the raise below.
-            if !@@cloudflareInteractiveResolutionAttempted && InteractiveCloudflareRecovery.available?
-                @@cloudflareInteractiveResolutionAttempted = true
+            # On every Cloudflare block — even when cookies are already
+            # set — re-run the recovery flow on a TTY. ChromeAuth refreshes
+            # sid/uid/cf_clearance/_cfuvid into $cookies + the cache, so
+            # the next attempt usually succeeds. Bounded by retryCount so
+            # a degenerate loop (user keeps clearing, Medium keeps blocking)
+            # eventually surfaces the error. CI / non-TTY just raises.
+            if retryCount <= CLOUDFLARE_RECOVERY_LIMIT && InteractiveCloudflareRecovery.available?
                 if InteractiveCloudflareRecovery.run(url)
                     return self.URL(url, method, data, retryCount)
                 end
