@@ -1,5 +1,6 @@
 require 'fileutils'
 require 'date'
+require 'json'
 require 'uri'
 
 require 'Parsers/H1Parser'
@@ -28,7 +29,7 @@ require 'Models/Paragraph'
 
 class ZMediumFetcher
 
-    attr_accessor :progress, :usersPostURLs, :isForJekyll
+    attr_accessor :progress, :usersPostURLs, :isForJekyll, :stdoutIO, :stdoutMode
 
     # Encode-then-decode helper that preserves spaces as %20.
     # Replaces the previous module-level URI.decode monkey patch.
@@ -38,7 +39,7 @@ class ZMediumFetcher
     end
 
     class Progress
-        attr_accessor :username, :postPath, :currentPostIndex, :totalPostsLength, :currentPostParagraphIndex, :totalPostParagraphsLength, :message
+        attr_accessor :username, :postPath, :currentPostIndex, :totalPostsLength, :currentPostParagraphIndex, :totalPostParagraphsLength, :message, :io
 
         def printLog()
             info = ""
@@ -64,7 +65,7 @@ class ZMediumFetcher
                 info += message
             end
 
-            puts info if info != ""
+            (io || $stdout).puts info if info != ""
         end
     end
 
@@ -72,9 +73,11 @@ class ZMediumFetcher
         @progress = Progress.new()
         @usersPostURLs = nil
         @isForJekyll = false
+        @stdoutIO = nil
+        @stdoutMode = false
     end
 
-    def buildParser(imagePathPolicy)
+    def buildParser(imagePathPolicy, skipImages: false)
         h1Parser = H1Parser.new()
         h2Parser = H2Parser.new()
         h3Parser = H3Parser.new()
@@ -84,9 +87,9 @@ class ZMediumFetcher
         oliParser = OLIParser.new()
         mixtapeembedParser = MIXTAPEEMBEDParser.new(isForJekyll)
         pqParser = PQParser.new()
-        iframeParser = IframeParser.new(isForJekyll)
+        iframeParser = IframeParser.new(isForJekyll, skipImages: skipImages)
         iframeParser.pathPolicy = imagePathPolicy
-        imgParser = IMGParser.new(isForJekyll)
+        imgParser = IMGParser.new(isForJekyll, skipImages: skipImages)
         imgParser.pathPolicy = imagePathPolicy
         bqParser = BQParser.new()
         preParser = PREParser.new(isForJekyll)
@@ -104,6 +107,8 @@ class ZMediumFetcher
     end
 
     def downloadPost(postURL, pathPolicy, isPin)
+        return downloadPostToStdout(postURL, isPin) if stdoutMode
+
         postID = Post.getPostIDFromPostURLString(postURL)
 
         if isForJekyll
@@ -158,24 +163,7 @@ class ZMediumFetcher
         else
             Helper.createDirIfNotExist(postPathPolicy.getAbsolutePath(nil))
             File.open(absolutePath, "w+") do |file|
-                postMetaInfo = Helper.createPostInfo(postInfo, isPin, isLockedPreviewOnly, isForJekyll)
-                file.puts(postMetaInfo) unless postMetaInfo.nil?
-
-                paragraphs.each_with_index do |paragraph, index|
-                    file.puts(renderParagraph(paragraph, startParser))
-
-                    progress.currentPostParagraphIndex = index + 1
-                    progress.message = "Converting Post..."
-                    progress.printLog()
-                end
-
-                if isLockedPreviewOnly
-                    viewFullPost = Helper.createViewFullPost(postURL, isForJekyll)
-                    file.puts(viewFullPost) unless viewFullPost.nil?
-                else
-                    postWatermark = Helper.createWatermark(postURL, isForJekyll)
-                    file.puts(postWatermark) unless postWatermark.nil?
-                end
+                writePost(file, paragraphs, postInfo, isLockedPreviewOnly, postURL, isPin, startParser)
             end
             FileUtils.touch absolutePath, :mtime => postInfo.latestPublishedAt
 
@@ -190,7 +178,52 @@ class ZMediumFetcher
         progress.postPath = nil
     end
 
-    def downloadPostsByUsername(username, pathPolicy)
+    # Stdout fast path: render markdown directly to `stdoutIO` without
+    # touching the filesystem and without downloading any images. Image
+    # references stay as remote miro.medium.com URLs (or MIRO_MEDIUM_HOST
+    # proxy if set).
+    def downloadPostToStdout(postURL, isPin)
+        postID = Post.getPostIDFromPostURLString(postURL)
+        postPath = Post.getPostPathFromPostURLString(postURL)
+
+        progress.postPath = ZMediumFetcher.decodePathPreservingSpaces(postPath)
+        progress.message = "Rendering Post..."
+        progress.printLog()
+
+        postInfo = Post.parsePostInfo(postID, nil, skipImages: true)
+        raise "Error: Post info not found! PostURL: #{postURL}" if postInfo.nil?
+
+        contentInfo = Post.fetchPostParagraphs(postID)
+        raise "Error: Paragraph Content not found! PostURL: #{postURL}" if contentInfo.nil?
+
+        isLockedPreviewOnly = contentInfo&.dig("isLockedPreviewOnly")
+
+        sourceParagraphs = contentInfo&.dig("bodyModel", "paragraphs")
+        raise "Error: Paragraph not found! PostURL: #{postURL}" if sourceParagraphs.nil?
+
+        progress.message = "Formatting Data..."
+        progress.printLog()
+
+        paragraphs = preprocessParagraphs(sourceParagraphs, postID)
+        startParser = buildParser(nil, skipImages: true)
+
+        progress.totalPostParagraphsLength = paragraphs.length
+        progress.currentPostParagraphIndex = 0
+        progress.message = "Converting Post..."
+        progress.printLog()
+
+        writePost(stdoutIO, paragraphs, postInfo, isLockedPreviewOnly, postURL, isPin, startParser)
+
+        progress.message = if isLockedPreviewOnly
+                               paywallMessage
+                           else
+                               "Post Successfully Rendered!"
+                           end
+        progress.printLog()
+        progress.postPath = nil
+    end
+
+    def downloadPostsByUsername(username, pathPolicy, limit: nil)
         progress.username = username
         progress.message = "Fetching posts..."
         progress.printLog()
@@ -205,7 +238,10 @@ class ZMediumFetcher
             postURLS.concat(postPageInfo["postURLs"])
             nextID = postPageInfo["nextID"]
             break if nextID.nil?
+            break if !limit.nil? && postURLS.length >= limit
         end
+
+        postURLS = postURLS.first(limit) unless limit.nil?
 
         @usersPostURLs = postURLS.map { |post| post["url"] }
 
@@ -214,17 +250,27 @@ class ZMediumFetcher
         progress.message = "Downloading posts..."
         progress.printLog()
 
-        downloadPathPolicy = if isForJekyll
-                                 pathPolicy
-                             else
-                                 PathPolicy.new(pathPolicy.getAbsolutePath("users/#{username}"), pathPolicy.getRelativePath("users/#{username}"))
-                             end
+        downloadPathPolicy = nil
+        unless stdoutMode
+            downloadPathPolicy = if isForJekyll
+                                     pathPolicy
+                                 else
+                                     PathPolicy.new(pathPolicy.getAbsolutePath("users/#{username}"), pathPolicy.getRelativePath("users/#{username}"))
+                                 end
+        end
 
         postURLS.each_with_index do |postURL, idx|
             begin
                 downloadPost(postURL["url"], downloadPathPolicy, postURL["pin"])
+                if stdoutMode && idx < postURLS.length - 1
+                    stdoutIO.puts "\n\n---\n\n"
+                end
             rescue => e
-                puts e
+                if stdoutMode
+                    warn e
+                else
+                    puts e
+                end
             end
 
             progress.currentPostIndex = idx + 1
@@ -236,9 +282,95 @@ class ZMediumFetcher
         progress.printLog()
     end
 
+    # Emits one NDJSON line per post (without bodies) to `stdoutIO`,
+    # used by `--list -u <username>`. Honors `limit` to short-circuit
+    # pagination and per-post metadata fetch as soon as we have enough.
+    def listPostsByUsername(username, limit = nil)
+        progress.username = username
+        progress.message = "Fetching posts list..."
+        progress.printLog()
+
+        userID = User.convertToUserIDFromUsername(username)
+        raise "Medium's Username:#{username} not found!" if userID.nil?
+
+        postURLS = []
+        nextID = nil
+        loop do
+            postPageInfo = User.fetchUserPosts(userID, nextID)
+            postURLS.concat(postPageInfo["postURLs"])
+            nextID = postPageInfo["nextID"]
+            break if nextID.nil?
+            break if !limit.nil? && postURLS.length >= limit
+        end
+
+        postURLS = postURLS.first(limit) unless limit.nil?
+
+        progress.totalPostsLength = postURLS.length
+        progress.currentPostIndex = 0
+        progress.message = "Listing posts..."
+        progress.printLog()
+
+        postURLS.each_with_index do |entry, idx|
+            url = entry["url"]
+            pin = entry["pin"]
+
+            begin
+                postID = Post.getPostIDFromPostURLString(url)
+                info = Post.parsePostInfo(postID, nil, skipImages: true)
+                if info.nil?
+                    warn "Skipping #{url}: post info not found"
+                else
+                    line = {
+                        "title"             => info.title,
+                        "url"               => url,
+                        "creator"           => info.creator,
+                        "firstPublishedAt"  => info.firstPublishedAt&.iso8601,
+                        "latestPublishedAt" => info.latestPublishedAt&.iso8601,
+                        "tags"              => info.tags || [],
+                        "description"       => info.description,
+                        "pin"               => pin == true
+                    }
+                    stdoutIO.puts JSON.generate(line)
+                end
+            rescue => e
+                warn "Error listing post #{url}: #{e.message}"
+            end
+
+            progress.currentPostIndex = idx + 1
+            progress.message = "Listing posts..."
+            progress.printLog()
+        end
+
+        progress.message = "All posts listed!, Total posts: #{postURLS.length}"
+        progress.printLog()
+    end
+
     # ------------------------------------------------------------------
     # Internal helpers (kept public-ish for tests / clarity)
     # ------------------------------------------------------------------
+
+    # Renders a post body to `io` (a File or any IO-like object). Shared by
+    # the filesystem path and the stdout path.
+    def writePost(io, paragraphs, postInfo, isLockedPreviewOnly, postURL, isPin, startParser)
+        postMetaInfo = Helper.createPostInfo(postInfo, isPin, isLockedPreviewOnly, isForJekyll)
+        io.puts(postMetaInfo) unless postMetaInfo.nil?
+
+        paragraphs.each_with_index do |paragraph, index|
+            io.puts(renderParagraph(paragraph, startParser))
+
+            progress.currentPostParagraphIndex = index + 1
+            progress.message = "Converting Post..."
+            progress.printLog()
+        end
+
+        if isLockedPreviewOnly
+            viewFullPost = Helper.createViewFullPost(postURL, isForJekyll)
+            io.puts(viewFullPost) unless viewFullPost.nil?
+        else
+            postWatermark = Helper.createWatermark(postURL, isForJekyll)
+            io.puts(postWatermark) unless postWatermark.nil?
+        end
+    end
 
     # Reads YAML-ish front matter from a previously-generated post and
     # returns the fields we care about for skip-already-downloaded logic.

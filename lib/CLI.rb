@@ -23,7 +23,7 @@ module CLI
         options = parseArgs(argv, errput: errput)
         loadCookiesFromEnv!
         warnAboutMissingSetup(options, errput: errput)
-        run(options, cwd, output: output)
+        run(options, cwd, output: output, errput: errput)
     end
 
     def parseArgs(argv, errput: $stderr)
@@ -69,6 +69,18 @@ module CLI
                 options[:postURL] = v
                 options[:jekyll] = true
                 errput.puts '[deprecated] -k/--jekyllPostURL is deprecated; use `--jekyll -p POST_URL`.'
+            end
+
+            opts.on('--stdout', 'Render Markdown of -p/-u directly to stdout. Skips all image/asset downloads (image links stay as remote URLs). Logs and banners go to stderr so stdout stays pure markdown.') do
+                options[:stdout] = true
+            end
+
+            opts.on('--list', 'With -u <username>, emit one NDJSON line per post (title, url, creator, dates, tags) to stdout. Skips bodies and image downloads.') do
+                options[:list] = true
+            end
+
+            opts.on('--limit N', Integer, 'Cap the number of posts processed when used with -u (in --stdout or --list mode).') do |v|
+                options[:limit] = v
             end
 
             opts.on('-n', '--new', 'Update to latest version') do
@@ -191,7 +203,7 @@ module CLI
         lines.join("\n")
     end
 
-    def run(options, cwd, output: $stdout)
+    def run(options, cwd, output: $stdout, errput: $stderr)
         if options[:help]
             output.puts options[:help]
             return
@@ -222,6 +234,34 @@ module CLI
             return
         end
 
+        # --stdout / --list path: render to the given output stream, skip
+        # all filesystem writes and asset downloads. Progress goes to errput
+        # so stdout stays pure markdown / NDJSON for embedding callers.
+        # Handled before willHitMedium? so the --list-without-username guard
+        # surfaces an error instead of silently no-op'ing.
+        if options[:stdout] || options[:list]
+            if options[:list] && options[:username].nil?
+                errput.puts '--list requires -u/--username'
+                return
+            end
+            return unless willHitMedium?(options)
+
+            fetcher = ZMediumFetcher.new
+            fetcher.isForJekyll = options[:jekyll] == true
+            fetcher.stdoutIO = output
+            fetcher.stdoutMode = true
+            fetcher.progress.io = errput
+
+            if options[:list]
+                fetcher.listPostsByUsername(options[:username], options[:limit])
+            elsif options[:postURL]
+                fetcher.downloadPost(options[:postURL], nil, nil)
+            elsif options[:username]
+                fetcher.downloadPostsByUsername(options[:username], nil, limit: options[:limit])
+            end
+            return
+        end
+
         return unless willHitMedium?(options)
 
         fetcher = ZMediumFetcher.new
@@ -232,7 +272,7 @@ module CLI
         if options[:postURL]
             fetcher.downloadPost(options[:postURL], targetPolicy, nil)
         elsif options[:username]
-            fetcher.downloadPostsByUsername(options[:username], targetPolicy)
+            fetcher.downloadPostsByUsername(options[:username], targetPolicy, limit: options[:limit])
         end
 
         Helper.printNewVersionMessageIfExists()

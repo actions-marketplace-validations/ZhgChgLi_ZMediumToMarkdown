@@ -28,8 +28,12 @@ class IframeParser < Parser
     SPOTIFY_URL_REGEX   = /^https?:\/\/open\.spotify\.com\/(track|album|episode|playlist|show)\/([A-Za-z0-9]+)/.freeze
     WIDGETIC_URL_REGEX  = /^https:\/\/app\.widgetic\.com/.freeze
 
-    def initialize(isForJekyll)
+    # When `skipImages: true`, renderThumbnailLink emits the remote thumbnail
+    # URL directly without calling ImageDownloader.download or touching
+    # pathPolicy. Used by --stdout / --list rendering paths.
+    def initialize(isForJekyll, skipImages: false)
         @isForJekyll = isForJekyll
+        @skipImages = skipImages
     end
 
     def parse(paragraph)
@@ -194,14 +198,19 @@ class IframeParser < Parser
 
     # Downloads `imageURL` into the post asset directory and emits the
     # standard `[![title](relPath)](targetURL)` markdown. Falls back to a
-    # plain link if the download fails.
+    # plain link if the download fails. When `@skipImages`, emits the remote
+    # `imageURL` directly without download.
     def renderThumbnailLink(paragraph, targetURL, imageURL, defaultTitle:)
+        title = paragraph.iframe.title
+        title = defaultTitle if title.nil? || title.empty?
+
+        if @skipImages
+            return "\r\n\r\n[![#{title}](#{imageURL} \"#{title}\")](#{targetURL})#{jekyllOpen}\r\n\r\n"
+        end
+
         fileName = "#{paragraph.name}_#{URI(imageURL).path.split("/").last}"
         imagePolicy = PathPolicy.new(pathPolicy.getAbsolutePath(paragraph.postID), pathPolicy.getRelativePath(paragraph.postID))
         absolutePath = imagePolicy.getAbsolutePath(fileName)
-
-        title = paragraph.iframe.title
-        title = defaultTitle if title.nil? || title.empty?
 
         if ImageDownloader.download(absolutePath, imageURL)
             relativePath = imagePolicy.getRelativePath(fileName)
