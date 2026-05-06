@@ -110,6 +110,10 @@ module CLI
                 ENV['MEDIUM_NO_AUTO_BROWSER'] = '1'
             end
 
+            opts.on('--auth', 'Open Chrome to sign in, capture sid / uid / cf_clearance / _cfuvid into the encrypted cookie cache, and exit. Run once before bulk / scheduled jobs to seed the cache.') do
+                options[:auth] = true
+            end
+
             opts.on('-h', '--help', 'Show this help message') do
                 options[:help] = opts.to_s
             end
@@ -231,6 +235,11 @@ module CLI
             return
         end
 
+        if options[:auth]
+            runAuth(errput: errput)
+            return
+        end
+
         # --stdout / --list path: render to the given output stream, skip
         # all filesystem writes and asset downloads. Progress goes to errput
         # so stdout stays pure markdown / NDJSON for embedding callers.
@@ -273,6 +282,32 @@ module CLI
         end
 
         Helper.printNewVersionMessageIfExists()
+    end
+
+    # `--auth` entry point: drive the Chrome login flow on demand so users
+    # can seed the cookie cache before kicking off a bulk / CI job. Errors
+    # are surfaced to errput; we never raise — `--auth` is best-effort
+    # setup, not a critical path.
+    def runAuth(errput: $stderr)
+        unless ChromeAuth.available?
+            errput.puts <<~MSG
+              ⚠  Chrome was not detected, so --auth can't run the auto-login flow.
+                 Install Google Chrome (or any Chromium-based browser ferrum can
+                 detect), or extract sid / uid manually — see:
+                 #{COOKIE_SETUP_URL}
+            MSG
+            return
+        end
+
+        cookies = ChromeAuth.login!(errput: errput)
+        if cookies.empty?
+            errput.puts '⚠  No cookies were captured. Make sure you finished signing in on a medium.com page before pressing Enter.'
+            return
+        end
+        cookies.each { |k, v| $cookies[k] = v unless v.to_s.empty? }
+        errput.puts "✅ Captured #{cookies.keys.join(' / ')} → #{CookieCache.path}"
+    rescue StandardError => e
+        errput.puts "(Auto-login failed: #{e.class}: #{e.message})"
     end
 
     # Jekyll mode writes into the cwd (so files land in `_posts/...` and
