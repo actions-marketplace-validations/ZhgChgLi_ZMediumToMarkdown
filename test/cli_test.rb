@@ -83,17 +83,6 @@ class CLIParseArgsTest < Minitest::Test
     end
   end
 
-  def test_miro_medium_host_flag_sets_env
-    prev = ENV['MIRO_MEDIUM_HOST']
-    begin
-      ENV.delete('MIRO_MEDIUM_HOST')
-      parse(['--miro_medium_host', 'https://image-proxy.example'])
-      assert_equal 'https://image-proxy.example', ENV['MIRO_MEDIUM_HOST']
-    ensure
-      prev.nil? ? ENV.delete('MIRO_MEDIUM_HOST') : ENV['MIRO_MEDIUM_HOST'] = prev
-    end
-  end
-
   def test_help_flag_returns_options_with_help_text
     opts = parse(%w[-h])
     refute_nil opts[:help]
@@ -271,30 +260,21 @@ end
 
 class CLIWarningTest < Minitest::Test
   GRAPHQL_PROXY = 'https://my-worker.example.workers.dev/_/graphql'.freeze
-  IMAGE_PROXY   = 'https://my-image-worker.example.workers.dev'.freeze
-
   def setup
     $cookies = {}
     @err = StringIO.new
     @prev_medium_host = ENV['MEDIUM_HOST']
-    @prev_miro_host   = ENV['MIRO_MEDIUM_HOST']
-    # Default = nothing configured; individual tests opt into "configured"
-    # by setting these env vars themselves.
     ENV.delete('MEDIUM_HOST')
-    ENV.delete('MIRO_MEDIUM_HOST')
   end
 
   def teardown
-    @prev_medium_host.nil? ? ENV.delete('MEDIUM_HOST')      : ENV['MEDIUM_HOST']      = @prev_medium_host
-    @prev_miro_host.nil?   ? ENV.delete('MIRO_MEDIUM_HOST') : ENV['MIRO_MEDIUM_HOST'] = @prev_miro_host
+    @prev_medium_host.nil? ? ENV.delete('MEDIUM_HOST') : ENV['MEDIUM_HOST'] = @prev_medium_host
   end
 
   def test_warns_when_post_url_set_and_no_cookies
     CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
-    # One-line warning that names what's missing and links the wiki.
     assert_match(/Medium cookies/, @err.string)
     assert_match(/MEDIUM_HOST/,    @err.string)
-    assert_match(/MIRO_MEDIUM_HOST/, @err.string)
     assert_includes @err.string, CLI::COOKIE_SETUP_URL
   end
 
@@ -302,7 +282,6 @@ class CLIWarningTest < Minitest::Test
     CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
     body = @err.string.strip
     refute_empty body
-    # Exactly one line of warning, plus the trailing newline from puts.
     assert_equal 1, body.lines.size, "expected one-line banner, got:\n#{body}"
   end
 
@@ -311,54 +290,32 @@ class CLIWarningTest < Minitest::Test
     assert_match(/Medium cookies/, @err.string)
   end
 
-  def test_warns_about_proxies_only_when_cookies_present
+  def test_warns_about_proxy_only_when_cookies_present
     $cookies = { 'sid' => 'real_sid', 'uid' => 'real_uid' }
     CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
     refute_match(/Medium cookies/, @err.string)
     assert_match(/MEDIUM_HOST/,      @err.string)
-    assert_match(/MIRO_MEDIUM_HOST/, @err.string)
   end
 
   def test_does_not_warn_when_everything_configured
     $cookies = { 'sid' => 'real_sid', 'uid' => 'real_uid' }
-    ENV['MEDIUM_HOST']      = GRAPHQL_PROXY
-    ENV['MIRO_MEDIUM_HOST'] = IMAGE_PROXY
+    ENV['MEDIUM_HOST'] = GRAPHQL_PROXY
     CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
     assert_empty @err.string
   end
 
   def test_treats_default_medium_host_as_unconfigured
     $cookies = { 'sid' => 'real_sid', 'uid' => 'real_uid' }
-    ENV['MEDIUM_HOST']      = 'https://medium.com/_/graphql'
-    ENV['MIRO_MEDIUM_HOST'] = IMAGE_PROXY
+    ENV['MEDIUM_HOST'] = 'https://medium.com/_/graphql'
     CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
     assert_match(/MEDIUM_HOST/, @err.string)
   end
 
-  def test_treats_default_miro_host_as_unconfigured
-    $cookies = { 'sid' => 'real_sid', 'uid' => 'real_uid' }
-    ENV['MEDIUM_HOST']      = GRAPHQL_PROXY
-    ENV['MIRO_MEDIUM_HOST'] = 'https://miro.medium.com'
-    CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
-    assert_match(/MIRO_MEDIUM_HOST/, @err.string)
-  end
-
-  def test_warns_only_about_image_proxy_when_cookies_and_graphql_proxy_set
-    $cookies = { 'sid' => 'real_sid', 'uid' => 'real_uid' }
+  def test_warns_only_about_cookies_when_proxy_set
     ENV['MEDIUM_HOST'] = GRAPHQL_PROXY
-    CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
-    refute_match(/Medium cookies/,    @err.string)
-    refute_includes @err.string, '(MEDIUM_HOST)'
-    assert_includes @err.string, '(MIRO_MEDIUM_HOST)'
-  end
-
-  def test_warns_only_about_cookies_when_both_proxies_set
-    ENV['MEDIUM_HOST']      = GRAPHQL_PROXY
-    ENV['MIRO_MEDIUM_HOST'] = IMAGE_PROXY
     CLI.warnAboutMissingSetup({ postURL: 'https://medium.com/p/abc' }, errput: @err)
     assert_match(/Medium cookies/, @err.string)
     refute_includes @err.string, '(MEDIUM_HOST)'
-    refute_includes @err.string, '(MIRO_MEDIUM_HOST)'
   end
 
   def test_does_not_warn_for_version_only_invocations

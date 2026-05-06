@@ -15,7 +15,7 @@ class PaywallMessageTest < Minitest::Test
     msg = @fetcher.paywallMessage
     assert_match(/REQUIRED/, msg)
     assert_match(/sid \/ uid/, msg)
-    assert_match(%r{github\.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy}, msg)
+    assert_match(%r{github\.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy\.md}, msg)
   end
 
   def test_prompts_to_provide_cookies_when_jar_has_blank_values

@@ -1,3 +1,5 @@
+# Setting Up Medium Cookies and a Cloudflare Worker Proxy
+
 Medium's GraphQL endpoint sits behind Cloudflare's bot management layer. Out of the box, two things tend to break unauthenticated runs:
 
 1. **Cloudflare blocks the request** with an HTTP 403 "Just a moment…" challenge — particularly common from cloud runners (GitHub Actions, datacenter IPs, headless browsers).
@@ -12,7 +14,7 @@ You have **three building blocks** to address these. They solve different proble
 | Where you run | Recommended setup |
 |---|---|
 | Local laptop / desktop | Auto-login on Cloudflare block (Section 1a). Worker proxy optional. |
-| CI / GitHub Actions / Docker / cloud runners | Manual cookies + Worker proxy (Sections 1b + 2). Auto-login is unavailable here. |
+| CI / GitHub Actions / Docker / cloud runners | Manual cookies + Worker proxy with secret (Sections 1b + 2). Auto-login is unavailable here. |
 | Anywhere downloading paywalled posts | Membership-account `sid` / `uid` (any extraction method). Worker proxy is independent. |
 
 ---
@@ -54,7 +56,8 @@ The tool then reads `sid` / `uid` / `cf_clearance` / `_cfuvid` straight out of t
 
 Use this when you're on CI, when you can't install Chrome, or when you want to copy `sid` / `uid` once and inject them as secrets.
 
-<img alt="image" src="https://github.com/user-attachments/assets/6a7c72e7-73be-4ff3-9429-06561b7ba92b" />
+<img width="2082" height="975" alt="image" src="https://github.com/user-attachments/assets/32adc711-74eb-46ed-927a-60b1ccd66fbc" />
+
 
 1. Open <https://medium.com> in a browser and **make sure you are logged in**. If you have a Member subscription, log in with the Member account so paywalled posts are accessible from this session.
 2. Open DevTools:
@@ -127,121 +130,87 @@ Even with valid cookies, Cloudflare's bot detection can challenge requests based
 - "Just a moment…" challenge HTML coming back instead of GraphQL JSON.
 - Runs that work locally but fail in CI.
 
-The most reliable workaround is to send your request through a tiny **Cloudflare Worker** that you deploy on your own free Cloudflare account. The Worker forwards your request to `medium.com` from inside Cloudflare's network — so to Medium's edge, the request looks like it came from another Cloudflare service, not from a flagged datacenter IP. (The auto-login flow from Section 1a doesn't help here — CI doesn't have a TTY for someone to click through Chrome.)
+The most reliable workaround is to send your request through a tiny **Cloudflare Worker** that you deploy on your own free Cloudflare account. The Worker forwards your request to Medium from inside Cloudflare's network — so to Medium's edge, the request looks like it came from another Cloudflare service, not from a flagged datacenter IP. (The auto-login flow from Section 1a doesn't help here — CI doesn't have a TTY for someone to click through Chrome.)
 
 ### Architecture
 
 ```
-ZMediumToMarkdown                           Your CF Worker                   medium.com
-─────────────────                           ──────────────                   ──────────
-  GraphQL / HTML  ─── HTTPS POST ───►   <your-worker>.workers.dev   ─────►   medium.com
-                                       (rewrites Host header,                Cloudflare
-                                        forwards cookies, etc.)              edge sees
-                                                                             intra-CF traffic
-                                       ◄────── response (proxied) ─────────  → no challenge
+ZMediumToMarkdown                 Your CF Worker                    upstream
+─────────────────                 ──────────────                    ────────
+  GraphQL POST /_/graphql ──┐                                       medium.com
+  iframe GET  /media/<id>   │ + X-Medium-Proxy-Secret               medium.com
+  OG     GET  /<user>/<post>├──►  <your-worker>.workers.dev  ──┬──► medium.com
+  image  GET  /<filename>   │                                  └──► miro.medium.com
+                            │                                      (path-pattern dispatch)
+                            └──── response (proxied) ◄─────────
 ```
+
+One Worker handles **both** medium.com and miro.medium.com. You set just `MEDIUM_HOST` (plus `MEDIUM_HOST_SECRET`) on the gem side — the gem auto-derives the miro host from `MEDIUM_HOST`'s origin. The Worker dispatches by path pattern (paths starting with `/v2/`, `/max/`, `/freeze/`, `/proxy/`, `/da/`, `/fit/`, or containing `*` go to miro.medium.com — everything else goes to medium.com).
 
 The Worker is small (a few dozen lines of JavaScript) and stays well within Cloudflare's free tier for personal use.
 
 ### Setup walkthrough
 
 1. Create a free Cloudflare account if you don't have one.
-2. Go to **Workers & Pages → Create → Create Worker**, give it a name (e.g. `medium-proxy`), and click **Deploy** to create the placeholder.
-3. Click **Edit code** and paste in the starter script below.
+2. Go to **Workers & Pages → Create → Create Worker**, give it a non-guessable name (e.g. `medium-proxy-` plus a random suffix), and click **Deploy** to create the placeholder.
+3. Click **Edit code** and paste in the script from [`worker_example.js`](worker_example.js). Replace the `SECRET` constant with your own random string (`openssl rand -base64 32` is a reasonable source).
 4. Click **Deploy**. You'll get a URL like `https://<your-worker-name>.<your-account>.workers.dev`.
-5. Test it:
+5. Test it (replace `<SECRET>` with the value you set in the script):
 
    ```bash
-   curl -X POST https://<your-worker-name>.<your-account>.workers.dev/_/graphql \
+   curl -X POST "https://<your-worker-name>.<your-account>.workers.dev/_/graphql" \
      -H "Content-Type: application/json" \
+     -H "X-Medium-Proxy-Secret: <SECRET>" \
      -d '[{"operationName":"PostViewerEdgeContentQuery","variables":{"postId":"abcdef123456"},"query":"..."}]'
    ```
 
-   You should get a Medium GraphQL response (not a Cloudflare challenge page).
+   You should get a Medium GraphQL response. A request without the header (or with the wrong value) returns 403.
 
-### Starter Worker script
+### Worker script
 
-This is the minimum viable proxy — it handles the GraphQL endpoint that `ZMediumToMarkdown` needs and forwards your cookies through. It's deliberately small so you can read every line; extend it as needed.
+The full script is at [`worker_example.js`](worker_example.js). Highlights:
 
-```javascript
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const path = url.pathname;
-    if (path == "/_/graphql") {
-      let body;
-      try {
-        body = await request.json();
-      } catch {
-        return new Response("Invalid JSON body", { status: 400 });
-      }
-      let apiURL = "https://medium.com/_/graphql";
-      const apiResponse = await fetch(apiURL, {
-        method: "POST",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0",
-          "Cookie": request.headers.get("cookie")
-        },
-        body: JSON.stringify(body),
-      });
-      const json = await apiResponse.json();
-      return new Response(JSON.stringify(json), {
-        status: apiResponse.status,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-        },
-      });
-    }
-    return new Response("Not Found", { status: 404 });
-  },
-};
-```
+- **Auth via `X-Medium-Proxy-Secret` header.** Every request must carry the header matching the script's `SECRET` constant — anything else returns 403. The gem only sets this header when calling a configured custom proxy host, so the secret never leaks to upstream Medium. The header (and Cloudflare hop headers) are stripped from the forwarded request.
+- **Path-pattern dispatch.** Paths starting with `/v2/`, `/max/`, `/freeze/`, `/proxy/`, `/da/`, `/fit/`, or containing `*` are forwarded to `https://miro.medium.com<path>`. Everything else is forwarded to `https://medium.com<path>`. medium.com slugs never contain `*` or those prefixes, so the heuristic is unambiguous in practice.
+- **Hop header stripping.** `cf-connecting-ip`, `cf-ray`, `cf-visitor`, `x-forwarded-for` and friends are deleted before forwarding so Medium's edge sees an intra-Cloudflare request without datacenter fingerprints.
+- **Image cache.** Successful miro responses get a `Cache-Control: public, max-age=86400` header so repeat fetches don't keep round-tripping.
 
-Notes on this script:
-
-- The proxy is exposed at the same path Medium uses, **`/_/graphql`**, so `MEDIUM_HOST` for your Worker is just `https://<your-worker-url>/_/graphql` — identical shape to the upstream URL it replaces.
-- The `Cookie` header from the incoming request is forwarded as-is, so your `sid` / `uid` reach Medium unchanged. Treat your Worker URL with the same care as your cookies — anyone who can call it can use any cookie value they pass in.
-- Only `POST` JSON bodies are handled; `GET` / other methods return 404. That's enough for `ZMediumToMarkdown`, which only POSTs GraphQL.
-- The script does **not** proxy `miro.medium.com` (image CDN) or post-page HTML. For most use cases the GraphQL endpoint is the only thing Cloudflare actively challenges, so this is enough. If you also need image proxying, the article below shows a second Worker for that host.
-
-For a more complete walkthrough — request streaming, WAF tuning, image proxy, the full GraphQL operation reference, and notes on how Medium's bot detection evolves — see:
+For a more complete walkthrough — request streaming, WAF tuning, the full GraphQL operation reference, and notes on how Medium's bot detection evolves — see:
 
 > **[Medium x Cloudflare: Offense and Defense](https://en.zhgchg.li/posts/88f0fb935120/#medium-x-cloudflare-offense-and-defense)**
 
 ### Pointing ZMediumToMarkdown at your proxy
 
-The tool reads two environment variables that override the upstream hosts. Set the ones you've proxied:
+One Worker, one URL, one secret. Two env vars total:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MEDIUM_HOST` | `https://medium.com/_/graphql` | GraphQL endpoint — point this at your Worker URL with the same `/_/graphql` path (e.g. `https://your-worker.your-account.workers.dev/_/graphql`). |
-| `MIRO_MEDIUM_HOST` | `https://miro.medium.com` | Image CDN — point this at your image-proxy Worker if you set one up. |
+| `MEDIUM_HOST` | *(unset → upstream `https://medium.com/_/graphql`)* | Worker proxy URL. Origin only — set it to your Worker's bare root (`https://<your-worker>.<your-account>.workers.dev/`) or with the `/_/graphql` suffix; the gem only uses the origin and rebuilds paths internally. Covers both medium.com and miro.medium.com via the Worker's path dispatch. |
+| `MEDIUM_HOST_SECRET` | *(unset)* | Shared secret. When set, the gem adds `X-Medium-Proxy-Secret: <value>` to every request bound for the proxy host. Must match the `SECRET` constant in the Worker script. |
 
-Equivalent CLI flags: `-x` / `--medium_host` and `--miro_medium_host`.
+`MEDIUM_HOST` propagates to every medium.com / miro.medium.com URL the gem hits: GraphQL POSTs, iframe metadata at `/media/<id>`, OG-image fallback for embedded post URLs at `/<user>/<post>`, miro image downloads (post body, preview, iframe thumbnails) — all of them route through the Worker, and `MEDIUM_HOST_SECRET` is attached on the way in.
 
 Example:
 
 ```bash
-export MEDIUM_HOST="https://your-worker.your-account.workers.dev/_/graphql"
-# Optional — only set if you also deployed an image-proxy Worker:
-# export MIRO_MEDIUM_HOST="https://your-image-worker.your-account.workers.dev"
+# Either form of MEDIUM_HOST works — the gem only uses the origin.
+export MEDIUM_HOST="https://your-worker.your-account.workers.dev/"
+export MEDIUM_HOST_SECRET="<your-secret>"
 export MEDIUM_COOKIE_SID="<your sid>"
 export MEDIUM_COOKIE_UID="<your uid>"
 
 ZMediumToMarkdown -u zhgchgli --jekyll
 ```
 
-In GitHub Actions — proxy hosts and cookies all flow through `env:`, so secret values never appear in the `command` string or logs:
+In GitHub Actions — proxy host, secret, and cookies all flow through `env:`, so secret values never appear in the `command` string or logs:
 
 ```yaml
 - uses: ZhgChgLi/ZMediumToMarkdown@main
   env:
-    MEDIUM_HOST: https://your-worker.your-account.workers.dev/_/graphql
-    # MIRO_MEDIUM_HOST: https://your-image-worker.your-account.workers.dev   # optional, only if you proxied images too
-    MEDIUM_COOKIE_SID: ${{ secrets.MEDIUM_COOKIE_SID }}
-    MEDIUM_COOKIE_UID: ${{ secrets.MEDIUM_COOKIE_UID }}
+    MEDIUM_HOST:        ${{ secrets.MEDIUM_HOST }}
+    MEDIUM_HOST_SECRET: ${{ secrets.MEDIUM_HOST_SECRET }}
+    MEDIUM_COOKIE_SID:  ${{ secrets.MEDIUM_COOKIE_SID }}
+    MEDIUM_COOKIE_UID:  ${{ secrets.MEDIUM_COOKIE_UID }}
   with:
     command: '-u zhgchgli'
 ```
@@ -262,6 +231,7 @@ For anything beyond casual local use — scheduled GitHub Actions backups, Docke
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `Blocked by Medium's Cloudflare layer (HTTP 403)` | Unauthenticated request, or your IP is on Cloudflare's bot list. | **Local with Chrome installed**: just run again on a TTY — the auto-login flow opens Chrome and refreshes cookies for you (Section 1a). **Local without Chrome**: open <https://medium.com> in any browser, clear the challenge, then rerun. **CI / datacenter**: provide cookies (`-s` / `-d` or env vars) and route via a Cloudflare Worker — see Sections 1b and 2. |
+| Worker returns `403 Forbidden` to gem requests | `MEDIUM_HOST_SECRET` is unset, doesn't match the Worker's `SECRET` constant, or the Worker URL is being hit from outside the gem (e.g. a curl test without the header). | Verify both values match. From the gem side, `MEDIUM_HOST_SECRET` must be set in the same env as `MEDIUM_HOST`. From the Worker side, redeploy after editing `SECRET`. For curl testing, pass `-H "X-Medium-Proxy-Secret: <value>"`. |
 | `This post is behind Medium's paywall…` even though cookies are set | Cookies don't belong to a Medium Member account, or they've expired (~2 weeks). | Refresh `sid` / `uid` (re-run the Section 1a auto-login on a TTY, or repeat Section 1b manually); verify the account has Membership access to the post. |
 | Auto-login opens Chrome but no cookies are captured | Login wasn't completed, or the page was navigated away from `medium.com` before pressing Enter. | Stay on a `medium.com` page after signing in, then return to the terminal and press Enter. If the issue persists, fall back to the manual flow in Section 1b. |
 | Auto-login doesn't trigger on a TTY | `--non-interactive` was passed, `MEDIUM_NO_AUTO_BROWSER=1` is set, the session is detected as CI, or Chrome isn't installed. | Drop the flag / env var; install Google Chrome; or extract cookies manually (Section 1b). |
@@ -273,7 +243,7 @@ For anything beyond casual local use — scheduled GitHub Actions backups, Docke
 
 ## Further reading
 
+- Reference Worker implementation: [`worker_example.js`](worker_example.js)
 - Full Worker walkthrough + Medium GraphQL reference: <https://en.zhgchg.li/posts/88f0fb935120/#medium-x-cloudflare-offense-and-defense>
 - Cloudflare Workers documentation: <https://developers.cloudflare.com/workers/>
 - Project README (top-level usage): [`README.md`](https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/README.md)
-- v3.2.0 release notes: [`CHANGELOG.md`](https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/CHANGELOG.md)

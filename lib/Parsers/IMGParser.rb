@@ -3,6 +3,7 @@ require 'Models/Paragraph'
 
 require 'ImageDownloader'
 require 'PathPolicy'
+require 'Request'
 
 class IMGParser < Parser
     attr_accessor :nextParser, :pathPolicy, :isForJekyll
@@ -20,7 +21,7 @@ class IMGParser < Parser
 
             fileName = paragraph.metadata.id #d*fsafwfe.jpg
 
-            miro_host = ENV.fetch('MIRO_MEDIUM_HOST', 'https://miro.medium.com')
+            miro_host = Request.miroHost
             imageURL = "#{miro_host}/#{fileName}"
 
             result = ""

@@ -11,10 +11,9 @@ require 'ChromeAuth'
 # All CLI-side concerns for the `ZMediumToMarkdown` executable. Pulled out
 # of bin/ so it can be exercised by unit tests without spawning processes.
 module CLI
-    COOKIE_SETUP_URL = 'https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy'.freeze
+    COOKIE_SETUP_URL = 'https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy.md'.freeze
 
     DEFAULT_MEDIUM_HOST = 'https://medium.com/_/graphql'.freeze
-    DEFAULT_MIRO_MEDIUM_HOST = 'https://miro.medium.com'.freeze
 
     module_function
 
@@ -51,10 +50,6 @@ module CLI
 
             opts.on('-x', '--medium_host URL', 'Cloudflare Worker proxy URL for Medium GraphQL (or set $MEDIUM_HOST). Strongly recommended for CI / bulk runs — see the wiki setup guide.') do |v|
                 ENV['MEDIUM_HOST'] = v
-            end
-
-            opts.on('--miro_medium_host URL', 'Cloudflare Worker proxy URL for Medium image CDN (or set $MIRO_MEDIUM_HOST). Optional companion to --medium_host.') do |v|
-                ENV['MIRO_MEDIUM_HOST'] = v
             end
 
             opts.on('-u', '--username USERNAME', 'Download all posts from a Medium username') do |v|
@@ -163,29 +158,20 @@ module CLI
     # other than the default upstream Medium URL — i.e. user pointed it
     # at their own Cloudflare Worker (or another proxy).
     def proxyConfigured?
-        host = ENV['MEDIUM_HOST'].to_s
-        !host.empty? && host != DEFAULT_MEDIUM_HOST
+        !Request.mediumProxyOrigin.nil?
     end
-
-    def imageProxyConfigured?
-        host = ENV['MIRO_MEDIUM_HOST'].to_s
-        !host.empty? && host != DEFAULT_MIRO_MEDIUM_HOST
-    end
-
 
     # Only warn when the invocation will actually hit Medium — skip for
     # --version, --clean, --help, --new.
     def warnAboutMissingSetup(options, errput: $stderr)
         return unless willHitMedium?(options)
 
-        missingCookies     = !cookiesPresent?
-        missingProxy       = !proxyConfigured?
-        missingImageProxy  = !imageProxyConfigured?
-        return if !missingCookies && !missingProxy && !missingImageProxy
+        missingCookies = !cookiesPresent?
+        missingProxy   = !proxyConfigured?
+        return if !missingCookies && !missingProxy
 
         errput.puts buildSetupBanner(missingCookies: missingCookies,
-                                     missingProxy: missingProxy,
-                                     missingImageProxy: missingImageProxy)
+                                     missingProxy: missingProxy)
     end
 
     def willHitMedium?(options)
@@ -194,11 +180,10 @@ module CLI
 
     # One-line warning. The wiki has the actual setup steps; we just
     # nudge the user toward it instead of dumping a wall of guidance.
-    def buildSetupBanner(missingCookies:, missingProxy:, missingImageProxy:)
+    def buildSetupBanner(missingCookies:, missingProxy:)
         missing = []
         missing << 'Medium cookies (sid / uid)' if missingCookies
         missing << 'Cloudflare Worker proxy (MEDIUM_HOST)' if missingProxy
-        missing << 'Cloudflare image proxy (MIRO_MEDIUM_HOST)' if missingImageProxy
         return '' if missing.empty?
 
         "⚠  Missing #{missing.join(' / ')}. Medium / Cloudflare may block the run. Setup guide: #{COOKIE_SETUP_URL}"

@@ -1,5 +1,6 @@
 require 'net/http'
 require 'nokogiri'
+require 'uri'
 require 'ChromeAuth'
 require 'CookieCache'
 
@@ -47,7 +48,7 @@ class Request
                          the MEDIUM_HOST env var. (Recommended.)
 
               Full step-by-step setup guide:
-              https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy
+              https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy.md
             MSG
         end
     end
@@ -173,6 +174,7 @@ class Request
 
     def self.URL(url, method = 'GET', data = nil, retryCount = 0)
         retryCount += 1
+        url = mediumProxiedURL(url)
 
         uri = URI(url)
         https = Net::HTTP.new(uri.host, uri.port)
@@ -225,6 +227,14 @@ class Request
           request['Cookie'] = cookiesString;
         end
 
+        # When the request is going to a configured Worker proxy (and only
+        # then), attach the user's MEDIUM_HOST_SECRET as a header so the
+        # Worker can authenticate the caller. Skipped for upstream
+        # medium.com / miro.medium.com so the secret never leaks to Medium.
+        if proxyURI?(uri) && (proxySecret = ENV['MEDIUM_HOST_SECRET'].to_s) && !proxySecret.empty?
+            request['X-Medium-Proxy-Secret'] = proxySecret
+        end
+
         response = https.request(request);
 
         setCookieString = response.get_fields('set-cookie');
@@ -275,6 +285,69 @@ class Request
         end
 
         response
+    end
+
+    # If the user has configured a Cloudflare Worker proxy via MEDIUM_HOST,
+    # rewrite any https://medium.com/<path> OR https://miro.medium.com/<path>
+    # URL to <worker-origin>/<path> so non-GraphQL hits (iframe metadata at
+    # /media/<id>, OG-image fallback to /<user>/<post>, miro image downloads,
+    # etc.) all benefit from the proxy. GraphQL callers already hand us the
+    # proxy URL directly via mediumGraphqlEndpoint, so they short-circuit.
+    def self.mediumProxiedURL(url)
+        return url unless url.is_a?(String)
+        origin = mediumProxyOrigin
+        return url if origin.nil?
+        if url.start_with?('https://medium.com/')
+            url.sub(%r{\Ahttps://medium\.com}, origin)
+        elsif url.start_with?('https://miro.medium.com/')
+            url.sub(%r{\Ahttps://miro\.medium\.com}, origin)
+        else
+            url
+        end
+    end
+
+    # Extract the `<scheme>://<host>[:port]` of MEDIUM_HOST, or nil if no
+    # proxy is configured (or it still points at upstream medium.com).
+    # Accepts MEDIUM_HOST in any form — bare root, with /_/graphql suffix,
+    # or any other path — only the origin matters here.
+    def self.mediumProxyOrigin
+        host = ENV['MEDIUM_HOST'].to_s
+        return nil if host.empty?
+        uri = URI.parse(host)
+        return nil if uri.host.nil? || uri.host == 'medium.com' || uri.host == 'miro.medium.com'
+        port = (uri.port && uri.port != uri.default_port) ? ":#{uri.port}" : ''
+        "#{uri.scheme}://#{uri.host}#{port}"
+    rescue URI::InvalidURIError
+        nil
+    end
+
+    # GraphQL endpoint the gem should POST to. When MEDIUM_HOST configures a
+    # proxy, it's <proxy-origin>/_/graphql regardless of whether the user set
+    # MEDIUM_HOST to the bare root or already with the /_/graphql suffix.
+    def self.mediumGraphqlEndpoint
+        origin = mediumProxyOrigin
+        origin.nil? ? 'https://medium.com/_/graphql' : "#{origin}/_/graphql"
+    end
+
+    # Resolve the host the gem should use for miro.medium.com image fetches.
+    # Single-Worker setups: the same MEDIUM_HOST proxy handles both medium.com
+    # and miro.medium.com via path dispatch, so we always derive miro from
+    # MEDIUM_HOST's origin. No proxy → upstream miro.medium.com.
+    def self.miroHost
+        mediumProxyOrigin || 'https://miro.medium.com'
+    end
+
+    # True iff `uri` is hosted by the configured Worker proxy — i.e. its
+    # host matches MEDIUM_HOST's origin. Used to gate the MEDIUM_HOST_SECRET
+    # auth header so the secret only leaves the process when heading to the
+    # user's own proxy.
+    def self.proxyURI?(uri)
+        return false if uri.nil? || uri.host.nil?
+        origin = mediumProxyOrigin
+        return false if origin.nil?
+        parsed = URI.parse(origin) rescue nil
+        return false if parsed.nil? || parsed.host.nil?
+        parsed.host == uri.host
     end
 
     # Cloudflare tags blocked responses via either the cf-mitigated header

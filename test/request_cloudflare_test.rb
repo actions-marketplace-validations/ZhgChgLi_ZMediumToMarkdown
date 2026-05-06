@@ -63,6 +63,6 @@ class RequestCloudflareDetectionTest < Minitest::Test
     assert_match(/MEDIUM_COOKIE_SID/, msg)
     assert_match(/MEDIUM_HOST/, msg)
     # Wiki URL is the canonical setup guide.
-    assert_match(%r{github\.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy}, msg)
+    assert_match(%r{github\.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy\.md}, msg)
   end
 end

@@ -162,6 +162,81 @@ class ZMediumFetcherFrontMatterTest < Minitest::Test
   end
 end
 
+class ZMediumFetcherShouldSkipTest < Minitest::Test
+  PostStub = Struct.new(:latestPublishedAt)
+
+  def setup
+    @fetcher = ZMediumFetcher.new
+    # Pretend Medium says this post was last touched at t=1000.
+    @postInfo = PostStub.new(Time.at(1000))
+  end
+
+  def metaWith(lastModifiedAt: 1000, pin: false, lockedPreviewOnly: false)
+    { lastModifiedAt: lastModifiedAt, pin: pin, lockedPreviewOnly: lockedPreviewOnly }
+  end
+
+  # ---------- happy-path skip ----------
+
+  def test_skips_when_disk_timestamp_matches_and_flags_align_as_false
+    assert @fetcher.shouldSkipExistingPost?(metaWith, @postInfo, false, false)
+  end
+
+  def test_skips_when_both_flags_are_true_and_match
+    meta = metaWith(pin: true, lockedPreviewOnly: true)
+    assert @fetcher.shouldSkipExistingPost?(meta, @postInfo, true, true)
+  end
+
+  # ---------- the regression: API returns nil, file omits the line ----------
+
+  def test_skips_when_api_returns_nil_isLockedPreviewOnly_and_file_omitted_the_line
+    # Helper.createPostInfo only writes `lockedPreviewOnly: true`, so a
+    # non-paywalled post on disk will read back as false. Medium's GraphQL
+    # may omit the field entirely on re-fetch, giving nil. Both should be
+    # treated as "not paywalled" → skip.
+    assert @fetcher.shouldSkipExistingPost?(metaWith, @postInfo, false, nil)
+  end
+
+  def test_skips_when_isPin_is_nil_and_file_was_not_pinned
+    # Single-post mode (`-p`) calls downloadPost with isPin = nil. A post
+    # that was never pinned on disk should still skip on re-run.
+    assert @fetcher.shouldSkipExistingPost?(metaWith, @postInfo, nil, false)
+  end
+
+  def test_skips_when_both_signals_nil_and_file_has_neither_line
+    assert @fetcher.shouldSkipExistingPost?(metaWith, @postInfo, nil, nil)
+  end
+
+  # ---------- legitimate "must re-download" cases ----------
+
+  def test_does_not_skip_when_file_is_older_than_medium_timestamp
+    meta = metaWith(lastModifiedAt: 999)
+    refute @fetcher.shouldSkipExistingPost?(meta, @postInfo, false, false)
+  end
+
+  def test_does_not_skip_when_lastModifiedAt_is_missing
+    meta = metaWith(lastModifiedAt: nil)
+    refute @fetcher.shouldSkipExistingPost?(meta, @postInfo, false, false)
+  end
+
+  def test_does_not_skip_when_pin_changed_to_true
+    refute @fetcher.shouldSkipExistingPost?(metaWith, @postInfo, true, false)
+  end
+
+  def test_does_not_skip_when_pin_changed_to_false
+    meta = metaWith(pin: true)
+    refute @fetcher.shouldSkipExistingPost?(meta, @postInfo, false, false)
+  end
+
+  def test_does_not_skip_when_paywall_flipped_on
+    refute @fetcher.shouldSkipExistingPost?(metaWith, @postInfo, false, true)
+  end
+
+  def test_does_not_skip_when_paywall_flipped_off
+    meta = metaWith(lockedPreviewOnly: true)
+    refute @fetcher.shouldSkipExistingPost?(meta, @postInfo, false, false)
+  end
+end
+
 class ZMediumFetcherPathHelperTest < Minitest::Test
   def test_decode_path_preserving_spaces
     assert_equal 'foo%20bar', ZMediumFetcher.decodePathPreservingSpaces('foo+bar')
