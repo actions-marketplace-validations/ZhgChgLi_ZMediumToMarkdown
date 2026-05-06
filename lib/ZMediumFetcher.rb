@@ -178,8 +178,8 @@ class ZMediumFetcher
 
     # Stdout fast path: render markdown directly to `stdoutIO` without
     # touching the filesystem and without downloading any images. Image
-    # references stay as remote miro.medium.com URLs (or MIRO_MEDIUM_HOST
-    # proxy if set).
+    # references stay as remote URLs on miro.medium.com (or the configured
+    # MEDIUM_HOST proxy origin when set).
     def downloadPostToStdout(postURL, isPin)
         postID = Post.getPostIDFromPostURLString(postURL)
         postPath = Post.getPostPathFromPostURLString(postURL)

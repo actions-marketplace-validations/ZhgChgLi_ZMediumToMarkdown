@@ -227,6 +227,14 @@ class Request
           request['Cookie'] = cookiesString;
         end
 
+        # When the request is going to a configured Worker proxy (and only
+        # then), attach the user's MEDIUM_HOST_SECRET as a header so the
+        # Worker can authenticate the caller. Skipped for upstream
+        # medium.com / miro.medium.com so the secret never leaks to Medium.
+        if proxyURI?(uri) && (proxySecret = ENV['MEDIUM_HOST_SECRET'].to_s) && !proxySecret.empty?
+            request['X-Medium-Proxy-Secret'] = proxySecret
+        end
+
         response = https.request(request);
 
         setCookieString = response.get_fields('set-cookie');
@@ -303,6 +311,28 @@ class Request
         "#{uri.scheme}://#{uri.host}#{port}"
     rescue URI::InvalidURIError
         nil
+    end
+
+    # Resolve the host the gem should use for miro.medium.com image fetches.
+    # Single-Worker setups: the same MEDIUM_HOST proxy handles both medium.com
+    # and miro.medium.com via path dispatch, so we always derive miro from
+    # MEDIUM_HOST's origin. No proxy → upstream miro.medium.com.
+    def self.miroHost
+        mediumProxyOrigin || 'https://miro.medium.com'
+    end
+
+    # True iff `uri` is hosted by the configured Worker proxy — i.e. its
+    # host matches MEDIUM_HOST and MEDIUM_HOST is set to something other
+    # than upstream medium.com. Used to gate the MEDIUM_HOST_SECRET auth
+    # header so the secret only leaves the process when heading to the
+    # user's own proxy.
+    def self.proxyURI?(uri)
+        return false if uri.nil? || uri.host.nil?
+        envValue = ENV['MEDIUM_HOST'].to_s
+        return false if envValue.empty?
+        parsed = URI.parse(envValue) rescue nil
+        return false if parsed.nil? || parsed.host.nil?
+        parsed.host != 'medium.com' && parsed.host == uri.host
     end
 
     # Cloudflare tags blocked responses via either the cf-mitigated header

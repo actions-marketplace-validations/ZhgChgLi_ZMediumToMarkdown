@@ -67,8 +67,8 @@ CLI flag wins over env var, env var wins over the on-disk cache.
 | `uid` (Medium login) | `-d, --cookie_uid` | `MEDIUM_COOKIE_UID` |
 | `cf_clearance` | `--cookie_cf_clearance` | `MEDIUM_COOKIE_CF_CLEARANCE` |
 | `_cfuvid` | `--cookie_cfuvid` | `MEDIUM_COOKIE_CFUVID` |
-| GraphQL endpoint | `-x, --medium_host` | `MEDIUM_HOST` (default `https://medium.com/_/graphql`) |
-| Image CDN | `--miro_medium_host` | `MIRO_MEDIUM_HOST` (default `https://miro.medium.com`) |
+| Worker proxy host | `-x, --medium_host` | `MEDIUM_HOST` (default `https://medium.com/_/graphql`). Covers both medium.com and miro.medium.com — the Worker dispatches by path. |
+| Worker shared secret | — | `MEDIUM_HOST_SECRET` (sent as `X-Medium-Proxy-Secret` header on proxy requests; matches the `SECRET` constant in the Worker script) |
 
 ```bash
 # Env-var form (preferred — keeps secrets out of shell history)
@@ -79,10 +79,10 @@ ZMediumToMarkdown -p "https://medium.com/..."
 # Or as flags for one-off runs
 ZMediumToMarkdown -p "https://medium.com/..." -s "<sid>" -d "<uid>"
 
-# Behind a Cloudflare Worker proxy
-ZMediumToMarkdown -u zhgchgli \
-  -x "https://my-worker.my-account.workers.dev/_/graphql" \
-  --miro_medium_host "https://my-image-worker.my-account.workers.dev"
+# Behind a single Cloudflare Worker that handles both medium.com and miro.medium.com
+export MEDIUM_HOST="https://my-worker.my-account.workers.dev/_/graphql"
+export MEDIUM_HOST_SECRET="<your-secret>"
+ZMediumToMarkdown -u zhgchgli
 ```
 
 ### Full setup guide
@@ -125,9 +125,11 @@ ZMediumToMarkdown [options]
                                    Short-term Cloudflare unblocking; expires ~30 min.
       --cookie_cfuvid VALUE        Cloudflare _cfuvid cookie (or $MEDIUM_COOKIE_CFUVID).
                                    Companion to cf_clearance.
-  -x, --medium_host URL            Cloudflare Worker proxy URL (or $MEDIUM_HOST). Strongly
-                                   recommended for CI / bulk runs — see the wiki setup guide.
-      --miro_medium_host URL       Image-CDN proxy URL (or $MIRO_MEDIUM_HOST). Optional companion to -x.
+  -x, --medium_host URL            Cloudflare Worker proxy URL (or $MEDIUM_HOST). One Worker
+                                   covers both medium.com and miro.medium.com via path
+                                   dispatch. Set $MEDIUM_HOST_SECRET to the same secret used
+                                   in the Worker script. Strongly recommended for CI / bulk
+                                   runs — see the wiki setup guide.
       --non-interactive            Never prompt or open Chrome on a Cloudflare block. CI runners
                                    auto-detect this; use the flag to force the same behavior on a TTY.
       --auth                       Open Chrome to sign in, capture cookies into the encrypted
@@ -182,7 +184,7 @@ In `--stdout` / `--list` mode:
 
 - Markdown / NDJSON is written to **stdout**; banners, progress, and warnings go to **stderr**.
 - **No filesystem writes**, no `Output/` directory, no `assets/` directory.
-- **No image downloads** — image references stay as remote `miro.medium.com` URLs (or `MIRO_MEDIUM_HOST` proxy if set).
+- **No image downloads** — image references stay as remote URLs on `miro.medium.com` (or your `MEDIUM_HOST` proxy origin when configured).
 - Skip-already-downloaded checks are bypassed; the post is rendered fresh every time.
 
 ```bash

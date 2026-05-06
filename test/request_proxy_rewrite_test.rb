@@ -91,3 +91,87 @@ class RequestMediumProxyRewriteTest < Minitest::Test
                  Request.mediumProxiedURL('https://medium.com/p/abc')
   end
 end
+
+class RequestProxyURIDetectionTest < Minitest::Test
+  WORKER_GRAPHQL = 'https://my-worker.my-account.workers.dev/_/graphql'.freeze
+
+  def setup
+    @prev_medium = ENV['MEDIUM_HOST']
+    ENV.delete('MEDIUM_HOST')
+  end
+
+  def teardown
+    @prev_medium.nil? ? ENV.delete('MEDIUM_HOST') : ENV['MEDIUM_HOST'] = @prev_medium
+  end
+
+  def test_returns_false_when_no_proxy_configured
+    refute Request.proxyURI?(URI('https://medium.com/p/abc'))
+    refute Request.proxyURI?(URI('https://my-worker.my-account.workers.dev/abc'))
+  end
+
+  def test_returns_true_when_uri_matches_medium_proxy_host
+    ENV['MEDIUM_HOST'] = WORKER_GRAPHQL
+    assert Request.proxyURI?(URI('https://my-worker.my-account.workers.dev/_/graphql'))
+    assert Request.proxyURI?(URI('https://my-worker.my-account.workers.dev/p/abc'))
+    # Miro hits derive their host from MEDIUM_HOST origin too, so they
+    # match the same proxy host and pass the gate.
+    assert Request.proxyURI?(URI('https://my-worker.my-account.workers.dev/0*abc.png'))
+  end
+
+  def test_returns_false_for_upstream_medium_when_proxy_set
+    # Even with proxy configured, a literal medium.com URI is not "going
+    # to the proxy" — the rewriter would have changed it before we reach
+    # this check, but the guard still has to refuse it so SECRET never
+    # heads to upstream Medium.
+    ENV['MEDIUM_HOST'] = WORKER_GRAPHQL
+    refute Request.proxyURI?(URI('https://medium.com/p/abc'))
+    refute Request.proxyURI?(URI('https://miro.medium.com/v2/abc.png'))
+  end
+
+  def test_returns_false_when_env_still_points_to_upstream_default
+    ENV['MEDIUM_HOST'] = 'https://medium.com/_/graphql'
+    refute Request.proxyURI?(URI('https://medium.com/p/abc'))
+  end
+
+  def test_returns_false_for_unrelated_third_party_host
+    ENV['MEDIUM_HOST'] = WORKER_GRAPHQL
+    refute Request.proxyURI?(URI('https://twitter.com/i/api/graphql/foo'))
+  end
+
+  def test_handles_nil_uri_and_uri_without_host
+    refute Request.proxyURI?(nil)
+    refute Request.proxyURI?(URI('mailto:nobody@example.com'))
+  end
+
+  def test_does_not_blow_up_on_unparseable_env
+    ENV['MEDIUM_HOST'] = 'not a url'
+    refute Request.proxyURI?(URI('https://my-worker.my-account.workers.dev/p/abc'))
+  end
+end
+
+class RequestMiroHostTest < Minitest::Test
+  WORKER_GRAPHQL = 'https://my-worker.my-account.workers.dev/_/graphql'.freeze
+
+  def setup
+    @prev_medium = ENV['MEDIUM_HOST']
+    ENV.delete('MEDIUM_HOST')
+  end
+
+  def teardown
+    @prev_medium.nil? ? ENV.delete('MEDIUM_HOST') : ENV['MEDIUM_HOST'] = @prev_medium
+  end
+
+  def test_returns_upstream_when_medium_host_unset
+    assert_equal 'https://miro.medium.com', Request.miroHost
+  end
+
+  def test_falls_back_to_medium_host_origin_when_proxy_set
+    ENV['MEDIUM_HOST'] = WORKER_GRAPHQL
+    assert_equal 'https://my-worker.my-account.workers.dev', Request.miroHost
+  end
+
+  def test_falls_back_to_upstream_when_medium_host_is_default
+    ENV['MEDIUM_HOST'] = 'https://medium.com/_/graphql'
+    assert_equal 'https://miro.medium.com', Request.miroHost
+  end
+end

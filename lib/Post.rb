@@ -67,7 +67,7 @@ class Post
       imagePathPolicy = PathPolicy.new(pathPolicy.getAbsolutePath(postID), pathPolicy.getRelativePath(postID))
       absolutePath = imagePathPolicy.getAbsolutePath(previewImageFileName)
 
-      miro_host = ENV.fetch('MIRO_MEDIUM_HOST', 'https://miro.medium.com')
+      miro_host = Request.miroHost
       imageURL = "#{miro_host}/#{previewImageFileName}"
 
       if ImageDownloader.download(absolutePath, imageURL)

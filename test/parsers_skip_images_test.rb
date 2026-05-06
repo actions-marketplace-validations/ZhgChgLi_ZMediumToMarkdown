@@ -48,20 +48,20 @@ class IMGParserSkipImagesTest < Minitest::Test
     assert called, 'ImageDownloader.download should be called in default mode'
   end
 
-  def test_respects_miro_medium_host_env
+  def test_image_url_uses_medium_host_origin_when_proxy_set
     p = TestSupport.paragraph(
       type: 'IMG',
       text: '',
       metadata: { 'id' => 'pic.jpg', '__typename' => 'ImageMetadata' }
     )
-    prev = ENV['MIRO_MEDIUM_HOST']
+    prev = ENV['MEDIUM_HOST']
     begin
-      ENV['MIRO_MEDIUM_HOST'] = 'https://my-img-proxy.example'
+      ENV['MEDIUM_HOST'] = 'https://my-worker.example.workers.dev/_/graphql'
       parser = IMGParser.new(false, skipImages: true)
       out = parser.parse(p)
-      assert_includes out, 'https://my-img-proxy.example/pic.jpg'
+      assert_includes out, 'https://my-worker.example.workers.dev/pic.jpg'
     ensure
-      prev.nil? ? ENV.delete('MIRO_MEDIUM_HOST') : ENV['MIRO_MEDIUM_HOST'] = prev
+      prev.nil? ? ENV.delete('MEDIUM_HOST') : ENV['MEDIUM_HOST'] = prev
     end
   end
 end
