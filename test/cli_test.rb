@@ -133,6 +133,58 @@ class CLIParseArgsTest < Minitest::Test
     assert_equal 'cfc', $cookies['cf_clearance']
     assert_equal 'cfu', $cookies['_cfuvid']
   end
+
+  def test_auth_flag_sets_option
+    opts = parse(%w[--auth])
+    assert_equal true, opts[:auth]
+  end
+end
+
+class CLIRunAuthTest < Minitest::Test
+  def setup
+    $cookies = {}
+    @err = StringIO.new
+  end
+
+  def test_warns_and_returns_when_chrome_unavailable
+    ChromeAuth.stub(:available?, false) do
+      CLI.runAuth(errput: @err)
+    end
+    assert_match(/Chrome was not detected/, @err.string)
+    assert_includes @err.string, CLI::COOKIE_SETUP_URL
+  end
+
+  def test_invokes_login_writes_cookies_into_jar_and_prints_summary
+    fake_login = ->(**_) { { 'sid' => 'a', 'uid' => 'b', 'cf_clearance' => 'c', '_cfuvid' => 'd' } }
+    ChromeAuth.stub(:available?, true) do
+      ChromeAuth.stub(:login!, fake_login) do
+        CLI.runAuth(errput: @err)
+      end
+    end
+    assert_equal 'a', $cookies['sid']
+    assert_equal 'b', $cookies['uid']
+    assert_match(/Captured sid \/ uid \/ cf_clearance \/ _cfuvid/, @err.string)
+    assert_includes @err.string, CookieCache.path
+  end
+
+  def test_warns_when_no_cookies_captured
+    ChromeAuth.stub(:available?, true) do
+      ChromeAuth.stub(:login!, ->(**_) { {} }) do
+        CLI.runAuth(errput: @err)
+      end
+    end
+    assert_match(/No cookies were captured/, @err.string)
+  end
+
+  def test_swallows_login_errors
+    boom = ->(**_) { raise 'browser exploded' }
+    ChromeAuth.stub(:available?, true) do
+      ChromeAuth.stub(:login!, boom) do
+        CLI.runAuth(errput: @err)
+      end
+    end
+    assert_match(/Auto-login failed/, @err.string)
+  end
 end
 
 class CLILoadCookiesTest < Minitest::Test

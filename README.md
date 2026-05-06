@@ -53,7 +53,7 @@ Medium's GraphQL endpoint is protected by Cloudflare. Two failure modes interrup
 
 ### Three ways to clear a Cloudflare block
 
-1. **Auto-login on a TTY (local).** When Cloudflare blocks an interactive run and Google Chrome is installed, the tool opens Chrome at <https://medium.com>; sign in / clear the challenge, and `sid` / `uid` / `cf_clearance` / `_cfuvid` are captured into an AES-256-GCM-encrypted cache at `~/.zmediumtomarkdown` (chmod 0600). Cached cookies are reused on subsequent runs and refreshed on every new block, so you rarely repeat the flow. Pass `--non-interactive` (or set `MEDIUM_NO_AUTO_BROWSER=1`) to suppress the prompt and fail fast.
+1. **Auto-login on a TTY (local).** When Cloudflare blocks an interactive run and Google Chrome is installed, the tool opens Chrome at <https://medium.com>; sign in / clear the challenge, and `sid` / `uid` / `cf_clearance` / `_cfuvid` are captured into an AES-256-GCM-encrypted cache at `~/.zmediumtomarkdown` (chmod 0600). Cached cookies are reused on subsequent runs and refreshed on every new block, so you rarely repeat the flow. Run `ZMediumToMarkdown --auth` once to trigger this flow on demand and seed the cache before any real run. Pass `--non-interactive` (or set `MEDIUM_NO_AUTO_BROWSER=1`) to suppress the prompt and fail fast.
 2. **Cloudflare Worker proxy.** Permanent fix, recommended for CI. Point the GraphQL endpoint (and optionally the image CDN) at your own Worker so requests originate from inside Cloudflare's network instead of a flagged datacenter IP.
 3. **Manual `cf_clearance` / `_cfuvid` cookies.** Short-term unblocking (~30 min). Useful when you can't run Chrome and don't want to set up a Worker proxy yet.
 
@@ -130,6 +130,9 @@ ZMediumToMarkdown [options]
       --miro_medium_host URL       Image-CDN proxy URL (or $MIRO_MEDIUM_HOST). Optional companion to -x.
       --non-interactive            Never prompt or open Chrome on a Cloudflare block. CI runners
                                    auto-detect this; use the flag to force the same behavior on a TTY.
+      --auth                       Open Chrome to sign in, capture cookies into the encrypted
+                                   cache (~/.zmediumtomarkdown), and exit. Run once before bulk /
+                                   scheduled jobs to seed the cache up front.
   -u, --username USERNAME          Download every post by a Medium username
   -p, --postURL POST_URL           Download a single post URL
       --jekyll                     Emit Jekyll-friendly output (combine with -u or -p)
