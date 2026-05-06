@@ -48,7 +48,7 @@ class Request
                          the MEDIUM_HOST env var. (Recommended.)
 
               Full step-by-step setup guide:
-              https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy
+              https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy.md
             MSG
         end
     end

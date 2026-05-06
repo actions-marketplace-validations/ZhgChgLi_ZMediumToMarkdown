@@ -419,7 +419,7 @@ class ZMediumFetcher
     # cookies belong to a Medium Member account that has access to the post.
     def paywallMessage
         if !defined?($cookies) || $cookies.nil? || ($cookies['sid'].to_s.empty? && $cookies['uid'].to_s.empty?)
-            "This post is behind Medium's paywall. Cookies (sid / uid) are REQUIRED to download the full content — without them you only get the public preview. Setup guide: https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy"
+            "This post is behind Medium's paywall. Cookies (sid / uid) are REQUIRED to download the full content — without them you only get the public preview. Setup guide: https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy.md"
         else
             "This post is behind Medium's paywall and the provided cookies don't grant access. Verify your sid / uid belong to a Medium Member account that can read this post. Cookies stay valid as long as they're being used (each successful request resets a ~2-week sliding window); they only expire after ~2 weeks of inactivity."
         end

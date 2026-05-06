@@ -17,7 +17,7 @@ The converted Markdown is written to `./Output/zmediumtomarkdown/`. Public posts
 
 For **paywalled posts**, **bulk downloads**, or **CI / GitHub Actions**, you'll need Medium login cookies. On a local TTY the tool can auto-capture them by opening Chrome the first time Cloudflare blocks; CI runs need a Cloudflare Worker proxy. See [Cookies & Cloudflare setup](#cookies--cloudflare-setup).
 
-> 📘 **[Setting Up Medium Cookies and a Cloudflare Worker Proxy →](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy)**
+> 📘 **[Setting Up Medium Cookies and a Cloudflare Worker Proxy →](https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy.md)**
 
 ---
 
@@ -89,7 +89,7 @@ ZMediumToMarkdown -u zhgchgli
 
 The setup guide covers cookie extraction, Cloudflare Worker deployment, security notes, and GitHub Actions wiring:
 
-> **[Setting Up Medium Cookies and a Cloudflare Worker Proxy](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy)**
+> **[Setting Up Medium Cookies and a Cloudflare Worker Proxy](https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy.md)**
 
 ---
 
@@ -205,7 +205,7 @@ Cookies and Worker-proxy env vars apply the same way as in normal mode.
 
 ## Quick-start templates
 
-- **GitHub Actions backup, no code**: [How-to walkthrough](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/How-to-use-Github-Action-as-your-free-&-no-code-Medium-Posts-backup-service)
+- **GitHub Actions backup, no code**: [How-to walkthrough](https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy.md)
 - **Working Action repo example**: <https://github.com/ZhgChgLi/ZMediumToMarkdown-github-action>
 
 ### Minimal GitHub Action
@@ -228,7 +228,7 @@ jobs:
           command: "-u zhgchgli"
 ```
 
-Store `MEDIUM_COOKIE_SID` / `MEDIUM_COOKIE_UID` as repository **secrets**, not repository variables, and never hard-code them in YAML. Pass them through the step's `env:` block instead of the `command:` string so they stay out of logs. For CI, also point `MEDIUM_HOST` at a Cloudflare Worker proxy; see the [setup guide](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy).
+Store `MEDIUM_COOKIE_SID` / `MEDIUM_COOKIE_UID` as repository **secrets**, not repository variables, and never hard-code them in YAML. Pass them through the step's `env:` block instead of the `command:` string so they stay out of logs. For CI, also point `MEDIUM_HOST` at a Cloudflare Worker proxy; see the [setup guide](https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy.md).
 
 ---
 
@@ -243,7 +243,7 @@ Store `MEDIUM_COOKIE_SID` / `MEDIUM_COOKIE_UID` as repository **secrets**, not r
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `Blocked by Medium's Cloudflare layer (HTTP 403)` | Cloudflare bot challenge; common after about 10 posts without cookies, or about 25 posts from CI / datacenter IPs without a Worker proxy | **Local**: on a TTY the tool auto-opens Chrome to clear the challenge and refresh cookies (cached at `~/.zmediumtomarkdown`). If Chrome is not installed, open <https://medium.com> in any browser, clear the challenge, then rerun. **CI / datacenter**: set up cookies and a Cloudflare Worker proxy — see the [setup guide](https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy). |
+| `Blocked by Medium's Cloudflare layer (HTTP 403)` | Cloudflare bot challenge; common after about 10 posts without cookies, or about 25 posts from CI / datacenter IPs without a Worker proxy | **Local**: on a TTY the tool auto-opens Chrome to clear the challenge and refresh cookies (cached at `~/.zmediumtomarkdown`). If Chrome is not installed, open <https://medium.com> in any browser, clear the challenge, then rerun. **CI / datacenter**: set up cookies and a Cloudflare Worker proxy — see the [setup guide](https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy.md). |
 | `This post is behind Medium's paywall…` even though I set cookies | Cookies do not belong to a Medium **Member** account that can read this post, or they have expired after inactivity | Refresh `sid` / `uid` from a logged-in browser and verify the account has access to the post. Cookies stay valid as long as they keep being used. |
 | `Error: Too Many Requests, blocked by Medium` | Hit Medium’s rate limit | Slow the schedule down or split the run; the tool already retries up to 10 times. |
 | Markdown looks fine but CJK / emoji is mojibaked | Older release — encoding regression | Upgrade to ≥ 2.6.7 (this release force-encodes all responses to UTF-8). |

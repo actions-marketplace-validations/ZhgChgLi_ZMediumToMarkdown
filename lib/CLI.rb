@@ -11,7 +11,7 @@ require 'ChromeAuth'
 # All CLI-side concerns for the `ZMediumToMarkdown` executable. Pulled out
 # of bin/ so it can be exercised by unit tests without spawning processes.
 module CLI
-    COOKIE_SETUP_URL = 'https://github.com/ZhgChgLi/ZMediumToMarkdown/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy'.freeze
+    COOKIE_SETUP_URL = 'https://github.com/ZhgChgLi/ZMediumToMarkdown/blob/main/wiki/Setting-Up-Medium-Cookies-and-a-Cloudflare-Worker-Proxy.md'.freeze
 
     DEFAULT_MEDIUM_HOST = 'https://medium.com/_/graphql'.freeze
 
