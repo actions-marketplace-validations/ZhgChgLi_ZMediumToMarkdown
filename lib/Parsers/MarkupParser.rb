@@ -14,15 +14,13 @@ class MarkupParser
 
     def parse()
         result = paragraph.text
-        if !paragraph.markups.nil? && paragraph.markups.length > 0
-            markupRender = MarkupStyleRender.new(paragraph, isForJekyll)
-            markupRender.usersPostURLs = usersPostURLs
-            begin
-                result = markupRender.parse()
-            rescue => e
-                puts e.backtrace
-                Helper.makeWarningText("Error occurred during render markup text, please help to open an issue on github.")
-            end
+        markupRender = MarkupStyleRender.new(paragraph, isForJekyll)
+        markupRender.usersPostURLs = usersPostURLs
+        begin
+            result = markupRender.parse()
+        rescue => e
+            puts e.backtrace
+            Helper.makeWarningText("Error occurred during render markup text, please help to open an issue on github.")
         end
 
         result
