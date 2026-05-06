@@ -93,8 +93,7 @@ class Post
       "query" => queryString
     }]
 
-    host = ENV.fetch('MEDIUM_HOST', 'https://medium.com/_/graphql')
-    response = Request.body(Request.URL(host, 'POST', body))
+    response = Request.body(Request.URL(Request.mediumGraphqlEndpoint, 'POST', body))
     return nil if response.nil?
 
     JSON.parse(response)

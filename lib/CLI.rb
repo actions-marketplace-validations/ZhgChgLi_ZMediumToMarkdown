@@ -158,8 +158,7 @@ module CLI
     # other than the default upstream Medium URL — i.e. user pointed it
     # at their own Cloudflare Worker (or another proxy).
     def proxyConfigured?
-        host = ENV['MEDIUM_HOST'].to_s
-        !host.empty? && host != DEFAULT_MEDIUM_HOST
+        !Request.mediumProxyOrigin.nil?
     end
 
     # Only warn when the invocation will actually hit Medium — skip for

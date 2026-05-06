@@ -22,8 +22,7 @@ class User
       }
     ]
 
-    host = ENV.fetch('MEDIUM_HOST', 'https://medium.com/_/graphql')
-    body = Request.body(Request.URL(host, "POST", query))
+    body = Request.body(Request.URL(Request.mediumGraphqlEndpoint, "POST", query))
     return nil if body.nil?
 
     json = JSON.parse(body)
@@ -44,8 +43,7 @@ class User
       }
     ]
 
-    host = ENV.fetch('MEDIUM_HOST', 'https://medium.com/_/graphql')
-    body = Request.body(Request.URL(host, "POST", query))
+    body = Request.body(Request.URL(Request.mediumGraphqlEndpoint, "POST", query))
     return { "nextID" => nil, "postURLs" => [] } if body.nil?
 
     json = JSON.parse(body)

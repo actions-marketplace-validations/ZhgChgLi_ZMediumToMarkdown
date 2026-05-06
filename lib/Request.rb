@@ -288,29 +288,45 @@ class Request
     end
 
     # If the user has configured a Cloudflare Worker proxy via MEDIUM_HOST,
-    # rewrite *any* https://medium.com/<path> URL to <worker-origin>/<path>
-    # so non-GraphQL hits (iframe metadata at /media/<id>, OG-image fallback
-    # to /<user>/<post>, etc.) also benefit from the proxy. GraphQL callers
-    # already hand us the proxy URL directly via ENV['MEDIUM_HOST'], so they
-    # short-circuit the rewrite.
+    # rewrite any https://medium.com/<path> OR https://miro.medium.com/<path>
+    # URL to <worker-origin>/<path> so non-GraphQL hits (iframe metadata at
+    # /media/<id>, OG-image fallback to /<user>/<post>, miro image downloads,
+    # etc.) all benefit from the proxy. GraphQL callers already hand us the
+    # proxy URL directly via mediumGraphqlEndpoint, so they short-circuit.
     def self.mediumProxiedURL(url)
-        return url unless url.is_a?(String) && url.start_with?('https://medium.com/')
+        return url unless url.is_a?(String)
         origin = mediumProxyOrigin
         return url if origin.nil?
-        url.sub(%r{\Ahttps://medium\.com}, origin)
+        if url.start_with?('https://medium.com/')
+            url.sub(%r{\Ahttps://medium\.com}, origin)
+        elsif url.start_with?('https://miro.medium.com/')
+            url.sub(%r{\Ahttps://miro\.medium\.com}, origin)
+        else
+            url
+        end
     end
 
     # Extract the `<scheme>://<host>[:port]` of MEDIUM_HOST, or nil if no
-    # proxy is configured (or it still points at medium.com itself).
+    # proxy is configured (or it still points at upstream medium.com).
+    # Accepts MEDIUM_HOST in any form — bare root, with /_/graphql suffix,
+    # or any other path — only the origin matters here.
     def self.mediumProxyOrigin
         host = ENV['MEDIUM_HOST'].to_s
         return nil if host.empty?
         uri = URI.parse(host)
-        return nil if uri.host.nil? || uri.host == 'medium.com'
+        return nil if uri.host.nil? || uri.host == 'medium.com' || uri.host == 'miro.medium.com'
         port = (uri.port && uri.port != uri.default_port) ? ":#{uri.port}" : ''
         "#{uri.scheme}://#{uri.host}#{port}"
     rescue URI::InvalidURIError
         nil
+    end
+
+    # GraphQL endpoint the gem should POST to. When MEDIUM_HOST configures a
+    # proxy, it's <proxy-origin>/_/graphql regardless of whether the user set
+    # MEDIUM_HOST to the bare root or already with the /_/graphql suffix.
+    def self.mediumGraphqlEndpoint
+        origin = mediumProxyOrigin
+        origin.nil? ? 'https://medium.com/_/graphql' : "#{origin}/_/graphql"
     end
 
     # Resolve the host the gem should use for miro.medium.com image fetches.
@@ -322,17 +338,16 @@ class Request
     end
 
     # True iff `uri` is hosted by the configured Worker proxy — i.e. its
-    # host matches MEDIUM_HOST and MEDIUM_HOST is set to something other
-    # than upstream medium.com. Used to gate the MEDIUM_HOST_SECRET auth
-    # header so the secret only leaves the process when heading to the
+    # host matches MEDIUM_HOST's origin. Used to gate the MEDIUM_HOST_SECRET
+    # auth header so the secret only leaves the process when heading to the
     # user's own proxy.
     def self.proxyURI?(uri)
         return false if uri.nil? || uri.host.nil?
-        envValue = ENV['MEDIUM_HOST'].to_s
-        return false if envValue.empty?
-        parsed = URI.parse(envValue) rescue nil
+        origin = mediumProxyOrigin
+        return false if origin.nil?
+        parsed = URI.parse(origin) rescue nil
         return false if parsed.nil? || parsed.host.nil?
-        parsed.host != 'medium.com' && parsed.host == uri.host
+        parsed.host == uri.host
     end
 
     # Cloudflare tags blocked responses via either the cf-mitigated header

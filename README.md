@@ -67,7 +67,7 @@ CLI flag wins over env var, env var wins over the on-disk cache.
 | `uid` (Medium login) | `-d, --cookie_uid` | `MEDIUM_COOKIE_UID` |
 | `cf_clearance` | `--cookie_cf_clearance` | `MEDIUM_COOKIE_CF_CLEARANCE` |
 | `_cfuvid` | `--cookie_cfuvid` | `MEDIUM_COOKIE_CFUVID` |
-| Worker proxy host | `-x, --medium_host` | `MEDIUM_HOST` (default `https://medium.com/_/graphql`). Covers both medium.com and miro.medium.com — the Worker dispatches by path. |
+| Worker proxy host | `-x, --medium_host` | `MEDIUM_HOST` — set to your Worker URL with or without a `/_/graphql` suffix; the gem only uses the origin and rebuilds paths. Covers both medium.com and miro.medium.com via path dispatch. |
 | Worker shared secret | — | `MEDIUM_HOST_SECRET` (sent as `X-Medium-Proxy-Secret` header on proxy requests; matches the `SECRET` constant in the Worker script) |
 
 ```bash
@@ -79,8 +79,9 @@ ZMediumToMarkdown -p "https://medium.com/..."
 # Or as flags for one-off runs
 ZMediumToMarkdown -p "https://medium.com/..." -s "<sid>" -d "<uid>"
 
-# Behind a single Cloudflare Worker that handles both medium.com and miro.medium.com
-export MEDIUM_HOST="https://my-worker.my-account.workers.dev/_/graphql"
+# Behind a single Cloudflare Worker that handles both medium.com and miro.medium.com.
+# Either form of MEDIUM_HOST works — the gem only uses the origin.
+export MEDIUM_HOST="https://my-worker.my-account.workers.dev/"
 export MEDIUM_HOST_SECRET="<your-secret>"
 ZMediumToMarkdown -u zhgchgli
 ```
