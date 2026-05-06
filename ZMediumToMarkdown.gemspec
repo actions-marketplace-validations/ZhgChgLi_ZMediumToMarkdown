@@ -6,7 +6,7 @@ Gem::Specification.new do |gem|
     gem.files         = Dir['lib/**/*.*']
     gem.executables   = ['ZMediumToMarkdown']
     gem.name          = 'ZMediumToMarkdown'
-    gem.version       = '3.3.3'
+    gem.version       = '3.4.0'
     gem.required_ruby_version = '>= 3.2'
   
     gem.license       = "MIT"

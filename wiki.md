@@ -161,50 +161,57 @@ The Worker is small (a few dozen lines of JavaScript) and stays well within Clou
 
 ### Starter Worker script
 
-This is the minimum viable proxy — it handles the GraphQL endpoint that `ZMediumToMarkdown` needs and forwards your cookies through. It's deliberately small so you can read every line; extend it as needed.
+This proxy forwards **any** `medium.com` path to the upstream — not just `/_/graphql`. The gem rewrites every `https://medium.com/<path>` it would otherwise hit (GraphQL, iframe `/media/<id>` metadata, OG-image fallback for embedded post URLs, etc.) to `https://<your-worker>/<path>`, so all of those benefit from the proxy.
 
 ```javascript
+// Forward any path on this Worker to the same path on medium.com,
+// preserving method, body, cookies, and User-Agent. Strips Cloudflare
+// hop headers so Medium's edge doesn't see datacenter signals.
 export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const path = url.pathname;
-    if (path == "/_/graphql") {
-      let body;
-      try {
-        body = await request.json();
-      } catch {
-        return new Response("Invalid JSON body", { status: 400 });
-      }
-      let apiURL = "https://medium.com/_/graphql";
-      const apiResponse = await fetch(apiURL, {
-        method: "POST",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0",
-          "Cookie": request.headers.get("cookie")
-        },
-        body: JSON.stringify(body),
-      });
-      const json = await apiResponse.json();
-      return new Response(JSON.stringify(json), {
-        status: apiResponse.status,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-        },
-      });
+  async fetch(request) {
+    const incoming = new URL(request.url);
+    const upstream = "https://medium.com" + incoming.pathname + incoming.search;
+
+    const headers = new Headers(request.headers);
+    headers.delete("host");
+    headers.delete("cf-connecting-ip");
+    headers.delete("cf-ray");
+    headers.delete("cf-visitor");
+    headers.delete("cf-ipcountry");
+    headers.delete("x-forwarded-for");
+    headers.delete("x-forwarded-proto");
+    headers.delete("x-real-ip");
+    if (!headers.has("user-agent")) {
+      headers.set(
+        "user-agent",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+      );
     }
-    return new Response("Not Found", { status: 404 });
+
+    const init = {
+      method: request.method,
+      headers: headers,
+      redirect: "manual",
+    };
+    if (!["GET", "HEAD"].includes(request.method)) {
+      init.body = request.body;
+    }
+
+    const upstreamRes = await fetch(upstream, init);
+    return new Response(upstreamRes.body, {
+      status: upstreamRes.status,
+      headers: upstreamRes.headers,
+    });
   },
 };
 ```
 
 Notes on this script:
 
-- The proxy is exposed at the same path Medium uses, **`/_/graphql`**, so `MEDIUM_HOST` for your Worker is just `https://<your-worker-url>/_/graphql` — identical shape to the upstream URL it replaces.
-- The `Cookie` header from the incoming request is forwarded as-is, so your `sid` / `uid` reach Medium unchanged. Treat your Worker URL with the same care as your cookies — anyone who can call it can use any cookie value they pass in.
-- Only `POST` JSON bodies are handled; `GET` / other methods return 404. That's enough for `ZMediumToMarkdown`, which only POSTs GraphQL.
-- The script does **not** proxy `miro.medium.com` (image CDN) or post-page HTML. For most use cases the GraphQL endpoint is the only thing Cloudflare actively challenges, so this is enough. If you also need image proxying, the article below shows a second Worker for that host.
+- **Any path is proxied**, so `MEDIUM_HOST` is now just the Worker origin or the legacy `<origin>/_/graphql` URL — both work because the gem rewrites by replacing the host, not by appending to a base path.
+- The `Cookie` header (and everything else) is forwarded as-is, so your `sid` / `uid` reach Medium unchanged. **Treat your Worker URL with the same care as your cookies** — anyone who can call it can use any cookie value they pass in. Add IP allow-listing or a shared-secret header if the Worker is exposed beyond a trusted CI runner.
+- The `cf-*` and `x-forwarded-*` headers are stripped before forwarding so Medium's edge sees the request as intra-Cloudflare without datacenter-IP fingerprints. Without this, some cloud Workers get challenged anyway.
+- Image CDN (`miro.medium.com`) is a separate host with its own challenges; deploy a second Worker pointed at `https://miro.medium.com` and set `MIRO_MEDIUM_HOST` to its URL if you also need image proxying. The article below has a ready-to-use script.
 
 For a more complete walkthrough — request streaming, WAF tuning, image proxy, the full GraphQL operation reference, and notes on how Medium's bot detection evolves — see:
 
@@ -216,7 +223,7 @@ The tool reads two environment variables that override the upstream hosts. Set t
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MEDIUM_HOST` | `https://medium.com/_/graphql` | GraphQL endpoint — point this at your Worker URL with the same `/_/graphql` path (e.g. `https://your-worker.your-account.workers.dev/_/graphql`). |
+| `MEDIUM_HOST` | `https://medium.com/_/graphql` | Worker proxy URL. Anything `https://<host>` is fine — the gem rewrites every `https://medium.com/<path>` it would hit (GraphQL, `/media/<id>`, post HTML for OG-image fallback, etc.) to `https://<your-worker>/<path>`. The legacy `<origin>/_/graphql` form still works. |
 | `MIRO_MEDIUM_HOST` | `https://miro.medium.com` | Image CDN — point this at your image-proxy Worker if you set one up. |
 
 Equivalent CLI flags: `-x` / `--medium_host` and `--miro_medium_host`.

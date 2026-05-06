@@ -1,5 +1,6 @@
 require 'net/http'
 require 'nokogiri'
+require 'uri'
 require 'ChromeAuth'
 require 'CookieCache'
 
@@ -173,6 +174,7 @@ class Request
 
     def self.URL(url, method = 'GET', data = nil, retryCount = 0)
         retryCount += 1
+        url = mediumProxiedURL(url)
 
         uri = URI(url)
         https = Net::HTTP.new(uri.host, uri.port)
@@ -275,6 +277,32 @@ class Request
         end
 
         response
+    end
+
+    # If the user has configured a Cloudflare Worker proxy via MEDIUM_HOST,
+    # rewrite *any* https://medium.com/<path> URL to <worker-origin>/<path>
+    # so non-GraphQL hits (iframe metadata at /media/<id>, OG-image fallback
+    # to /<user>/<post>, etc.) also benefit from the proxy. GraphQL callers
+    # already hand us the proxy URL directly via ENV['MEDIUM_HOST'], so they
+    # short-circuit the rewrite.
+    def self.mediumProxiedURL(url)
+        return url unless url.is_a?(String) && url.start_with?('https://medium.com/')
+        origin = mediumProxyOrigin
+        return url if origin.nil?
+        url.sub(%r{\Ahttps://medium\.com}, origin)
+    end
+
+    # Extract the `<scheme>://<host>[:port]` of MEDIUM_HOST, or nil if no
+    # proxy is configured (or it still points at medium.com itself).
+    def self.mediumProxyOrigin
+        host = ENV['MEDIUM_HOST'].to_s
+        return nil if host.empty?
+        uri = URI.parse(host)
+        return nil if uri.host.nil? || uri.host == 'medium.com'
+        port = (uri.port && uri.port != uri.default_port) ? ":#{uri.port}" : ''
+        "#{uri.scheme}://#{uri.host}#{port}"
+    rescue URI::InvalidURIError
+        nil
     end
 
     # Cloudflare tags blocked responses via either the cf-mitigated header

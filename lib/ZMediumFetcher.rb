@@ -153,9 +153,7 @@ class ZMediumFetcher
 
         existingMeta = readExistingFrontMatter(absolutePath)
 
-        if existingMeta[:lastModifiedAt] && existingMeta[:lastModifiedAt] >= postInfo.latestPublishedAt.to_i &&
-           !isPin.nil? && isPin == existingMeta[:pin] &&
-           !isLockedPreviewOnly.nil? && isLockedPreviewOnly == existingMeta[:lockedPreviewOnly]
+        if shouldSkipExistingPost?(existingMeta, postInfo, isPin, isLockedPreviewOnly)
             # Already downloaded and nothing has changed!, Skip!
             progress.currentPostParagraphIndex = paragraphs.length
             progress.message = "Skip, Post already downloaded and nothing has changed!"
@@ -374,6 +372,26 @@ class ZMediumFetcher
 
     # Reads YAML-ish front matter from a previously-generated post and
     # returns the fields we care about for skip-already-downloaded logic.
+    # Does the existing on-disk post still match the freshly-fetched
+    # metadata? All three signals must agree:
+    #   1. last_modified_at on disk is >= Medium's latestPublishedAt
+    #   2. isPin matches the file's pin flag
+    #   3. isLockedPreviewOnly matches the file's lockedPreviewOnly flag
+    #
+    # Boolean signals are normalized to true/false before comparing so that
+    # `nil` (Medium's GraphQL response can omit the field for non-paywalled
+    # / non-pinned posts) and `false` (the default written when the front-
+    # matter line is omitted by Helper.createPostInfo) are treated as
+    # equivalent — otherwise free, never-pinned posts would re-download on
+    # every run.
+    def shouldSkipExistingPost?(existingMeta, postInfo, isPin, isLockedPreviewOnly)
+        return false unless existingMeta[:lastModifiedAt]
+        return false unless existingMeta[:lastModifiedAt] >= postInfo.latestPublishedAt.to_i
+        return false unless (isPin == true) == existingMeta[:pin]
+        return false unless (isLockedPreviewOnly == true) == existingMeta[:lockedPreviewOnly]
+        true
+    end
+
     def readExistingFrontMatter(absolutePath)
         meta = { lastModifiedAt: nil, pin: false, lockedPreviewOnly: false }
         return meta unless File.file?(absolutePath)
