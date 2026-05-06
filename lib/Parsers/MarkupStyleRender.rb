@@ -57,7 +57,19 @@ class MarkupStyleRender
 
     def parse
         if paragraph.markups.nil? || paragraph.markups.empty?
-            response = chars.values
+            # No markup tags ⇒ walkCharsWithTags is skipped. For Jekyll
+            # output we still need to HTML-escape `<` / `>` so kramdown
+            # doesn't treat raw chars in the source text as bare HTML tags.
+            # Non-Jekyll output keeps the chars as-is.
+            response = if isForJekyll
+                chars.values.map do |c|
+                    next c if c.chars.empty?
+                    escaped = Helper.escapeHTML(c.chars.join, true)
+                    TextChar.new(escaped.chars, "Text")
+                end
+            else
+                chars.values
+            end
         else
             tags = buildTags(paragraph.markups).sort_by(&:startIndex)
             response = walkCharsWithTags(tags)

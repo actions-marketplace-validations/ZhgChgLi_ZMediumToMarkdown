@@ -26,7 +26,16 @@ class Helper
         html = Request.html(Request.URL(url))
         return "" unless html
         image = html.search("meta[property='og:image']").first
-        image ? (image['content'] || "") : ""
+        return "" unless image
+        content = (image['content'] || '').to_s.strip
+        return "" if content.empty?
+        # Resolve relative `og:image` paths (e.g. `/assets/og.png`) against the
+        # source page so downstream consumers get a usable absolute URL.
+        begin
+            URI.join(url, content).to_s
+        rescue URI::InvalidURIError, ArgumentError
+            content
+        end
     end
 
     # Escape characters that always have inline markdown meaning. Used for
