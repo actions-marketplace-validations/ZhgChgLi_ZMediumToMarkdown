@@ -185,15 +185,16 @@ One Worker, one URL, one secret. Two env vars total:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MEDIUM_HOST` | `https://medium.com/_/graphql` | GraphQL endpoint and base host for *every* medium.com / miro.medium.com hit (the Worker handles both via path dispatch). Set to `https://<your-worker>.<your-account>.workers.dev/_/graphql`. |
+| `MEDIUM_HOST` | *(unset → upstream `https://medium.com/_/graphql`)* | Worker proxy URL. Origin only — set it to your Worker's bare root (`https://<your-worker>.<your-account>.workers.dev/`) or with the `/_/graphql` suffix; the gem only uses the origin and rebuilds paths internally. Covers both medium.com and miro.medium.com via the Worker's path dispatch. |
 | `MEDIUM_HOST_SECRET` | *(unset)* | Shared secret. When set, the gem adds `X-Medium-Proxy-Secret: <value>` to every request bound for the proxy host. Must match the `SECRET` constant in the Worker script. |
 
-`MEDIUM_HOST` overrides propagate automatically to every `https://medium.com/<path>` the gem hits: GraphQL POSTs, iframe metadata at `/media/<id>`, OG-image fallback for embedded post URLs at `/<user>/<post>`, etc. — all of them go through the proxy.
+`MEDIUM_HOST` propagates to every medium.com / miro.medium.com URL the gem hits: GraphQL POSTs, iframe metadata at `/media/<id>`, OG-image fallback for embedded post URLs at `/<user>/<post>`, miro image downloads (post body, preview, iframe thumbnails) — all of them route through the Worker, and `MEDIUM_HOST_SECRET` is attached on the way in.
 
 Example:
 
 ```bash
-export MEDIUM_HOST="https://your-worker.your-account.workers.dev/_/graphql"
+# Either form of MEDIUM_HOST works — the gem only uses the origin.
+export MEDIUM_HOST="https://your-worker.your-account.workers.dev/"
 export MEDIUM_HOST_SECRET="<your-secret>"
 export MEDIUM_COOKIE_SID="<your sid>"
 export MEDIUM_COOKIE_UID="<your uid>"

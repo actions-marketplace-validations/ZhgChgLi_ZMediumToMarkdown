@@ -4,7 +4,8 @@
 // dispatch. The gem only needs MEDIUM_HOST (it derives the miro origin
 // from there automatically):
 //
-//   MEDIUM_HOST          = https://<your-worker>.<your-account>.workers.dev/_/graphql
+//   MEDIUM_HOST          = https://<your-worker>.<your-account>.workers.dev/
+//                          (with or without /_/graphql — the gem uses origin only)
 //   MEDIUM_HOST_SECRET   = <your-secret>     ← matches SECRET below
 //
 // Dispatch rules (based on incoming path):
