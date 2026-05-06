@@ -56,7 +56,8 @@ The tool then reads `sid` / `uid` / `cf_clearance` / `_cfuvid` straight out of t
 
 Use this when you're on CI, when you can't install Chrome, or when you want to copy `sid` / `uid` once and inject them as secrets.
 
-<img alt="image" src="https://github.com/user-attachments/assets/6a7c72e7-73be-4ff3-9429-06561b7ba92b" />
+<img width="2082" height="975" alt="image" src="https://github.com/user-attachments/assets/32adc711-74eb-46ed-927a-60b1ccd66fbc" />
+
 
 1. Open <https://medium.com> in a browser and **make sure you are logged in**. If you have a Member subscription, log in with the Member account so paywalled posts are accessible from this session.
 2. Open DevTools:
