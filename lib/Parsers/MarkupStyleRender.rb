@@ -1,5 +1,6 @@
 require 'Models/Paragraph'
 require 'Helper'
+require 'rangeable'
 
 # Renders a Paragraph's text + Markup list into final markdown.
 #
@@ -111,7 +112,7 @@ class MarkupStyleRender
     end
 
     def buildTag(markup)
-        case markup.type
+        tag = case markup.type
         when "EM"     then TagChar.new(2, markup.start, markup.end, "_",  "_")
         when "CODE"   then TagChar.new(0, markup.start, markup.end, "`",  "`")
         when "STRONG" then TagChar.new(2, markup.start, markup.end, "**", "**")
@@ -119,8 +120,12 @@ class MarkupStyleRender
         when "A"      then buildAnchorTag(markup)
         else
             Helper.makeWarningText("Undefined Markup Type: #{markup.type}.")
-            nil
+            return nil
         end
+        # Stash the originating Markup on the tag so walkCharsWithTags can
+        # use it as the Rangeable element key (see #walkCharsWithTags).
+        tag&.instance_variable_set(:@_markup, markup)
+        tag
     end
 
     def buildAnchorTag(markup)
@@ -148,23 +153,86 @@ class MarkupStyleRender
         end
     end
 
+    # Walks every char index and dispatches into the open/close hooks. We
+    # build two index-keyed Hashes (`opens_at`, `closes_at`) up front so the
+    # hot path is O(1) per char instead of the previous O(m) `tags.select`
+    # scan; combined with the linear walk over chars that turns total cost
+    # from O(L · m) into O(L + m). Same-position tags inside each bucket
+    # keep their pre-sorted order from the caller.
+    #
+    # ESCAPE tags bypass Rangeable entirely. ESCAPE ranges are single-char
+    # synthetic markups injected by Paragraph#initialize and they MUST stay
+    # disjoint — feeding them through Rangeable would coalesce two ESCAPEs
+    # at adjacent positions into a single span, double-emitting the
+    # backslash. Non-ESCAPE markups go through Rangeable so identical-type
+    # overlapping spans (e.g. two STRONGs that share a few chars) get
+    # merged into a single tag pair.
     def walkCharsWithTags(tags)
+        rangeable_tags, escape_tags = tags.partition { |t| !escape_tag?(t) }
+        merged_tags = mergeTagsViaRangeable(rangeable_tags)
+        final_tags = (merged_tags + escape_tags).sort_by(&:startIndex)
+
+        opens_at = Hash.new { |h, k| h[k] = [] }
+        closes_at = Hash.new { |h, k| h[k] = [] }
+        final_tags.each do |t|
+            opens_at[t.startIndex] << t
+            closes_at[t.endIndex] << t
+        end
+
         response = []
         stack = []
-
         chars.each do |index, char|
             if newline?(char)
                 emitNewline(char, stack, response)
             end
 
-            openStartingTags(tags, index, stack, response)
+            openStartingTags(opens_at[index], stack, response) if opens_at.key?(index)
             emitChar(char, stack, response) unless newline?(char)
-            closeEndingTags(tags, index, stack, response)
+            closeEndingTags(closes_at[index], stack, response) if closes_at.key?(index)
         end
 
         # Flush any tags still open at end-of-paragraph.
         stack.reverse_each { |tag| response.push(tag.endChars) }
         response
+    end
+
+    # Build a Rangeable from the non-ESCAPE TagChars, then read the merged
+    # ranges back out as fresh TagChar instances (one per coalesced span,
+    # rather than one per original markup). Each TagChar carries enough
+    # info (sort priority, start/end strings) to drive emission, so we
+    # reuse a representative original TagChar per Markup as the prototype.
+    def mergeTagsViaRangeable(rangeable_tags)
+        return [] if rangeable_tags.empty?
+
+        rangeable = Rangeable.new
+        proto_by_markup = {}
+
+        rangeable_tags.each do |tag|
+            markup = tag.instance_variable_get(:@_markup)
+            proto_by_markup[markup] ||= tag
+            # TagChar stored endIndex as `end - 1` (last covered slot); restore
+            # the half-open `end` for Rangeable's closed-interval insert.
+            rangeable.insert(markup, start: tag.startIndex, end: tag.endIndex)
+        end
+
+        merged = []
+        rangeable.each do |markup, ranges|
+            proto = proto_by_markup[markup]
+            startCharsStr = proto.startChars.chars.join
+            endCharsStr = proto.endChars.chars.join
+            ranges.each do |lo, hi|
+                # TagChar.new takes the half-open `end`; it stores `end - 1`.
+                merged << TagChar.new(proto.sort, lo, hi + 1, startCharsStr, endCharsStr)
+            end
+        end
+        merged
+    end
+
+    # ESCAPE markups are emitted as TagChar with startChars == "\\" and
+    # empty endChars; identifying them by start-string is simpler than
+    # threading a type tag through the TagChar struct.
+    def escape_tag?(tag)
+        tag.startChars.chars.join == "\\"
     end
 
     def newline?(char)
@@ -180,8 +248,8 @@ class MarkupStyleRender
         stack.each { |tag| response.push(tag.startChars) }
     end
 
-    def openStartingTags(tags, index, stack, response)
-        startTags = tags.select { |t| t.startIndex == index }.sort_by(&:sort)
+    def openStartingTags(startTags, stack, response)
+        startTags = startTags.sort_by(&:sort)
         suppressEmit = false
         startTags.each do |tag|
             response.append(tag.startChars) unless suppressEmit
@@ -211,9 +279,12 @@ class MarkupStyleRender
     # supposed to end here (overlapping markups), close it anyway and
     # re-open it after the legitimate closes — keeping each individual
     # tag pair properly nested in the output.
-    def closeEndingTags(tags, index, stack, response)
-        endTags = tags.select { |t| t.endIndex == index }
+    def closeEndingTags(endTags, stack, response)
         return if endTags.empty?
+
+        # Caller passes the pre-built bucket; clone so we can mutate locally
+        # (find_index + delete_at) without trashing the cached array.
+        endTags = endTags.dup
 
         mismatchTags = []
         until endTags.empty?
