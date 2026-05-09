@@ -18,6 +18,16 @@ class Paragraph
 
     class Markup
         attr_accessor :type, :start, :end, :href, :anchorType, :userId, :linkMetadata
+
+        # Semantic identity fields used for `==` / `eql?` / `hash`. `start` and
+        # `end` are interval coordinates (handled by Rangeable as the [lo, hi]
+        # pair) rather than identity. `linkMetadata` is currently unused
+        # downstream so it is excluded too. This identity is what lets
+        # Rangeable merge two Markups that describe the same logical span
+        # (e.g. two STRONG runs that overlap) into a single coalesced
+        # interval.
+        SEMANTIC_KEYS = [:type, :href, :anchorType, :userId].freeze
+
         def initialize(json)
             @type = json['type']
             @start = json['start']
@@ -26,6 +36,16 @@ class Paragraph
             @anchorType = json['anchorType']
             @userId = json['userId']
             @linkMetadata = json['linkMetadata']
+        end
+
+        def ==(other)
+            return false unless other.is_a?(Markup)
+            SEMANTIC_KEYS.all? { |k| public_send(k) == other.public_send(k) }
+        end
+        alias_method :eql?, :==
+
+        def hash
+            SEMANTIC_KEYS.map { |k| public_send(k) }.hash
         end
     end
 

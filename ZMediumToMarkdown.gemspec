@@ -6,7 +6,7 @@ Gem::Specification.new do |gem|
     gem.files         = Dir['lib/**/*.*']
     gem.executables   = ['ZMediumToMarkdown']
     gem.name          = 'ZMediumToMarkdown'
-    gem.version       = '3.5.2'
+    gem.version       = '3.6.0'
     gem.required_ruby_version = '>= 3.2'
   
     gem.license       = "MIT"
@@ -16,4 +16,5 @@ Gem::Specification.new do |gem|
     gem.add_dependency 'rubyzip', '~> 2.3.2'
     gem.add_dependency 'uri', '>= 1.0.4', '< 2.0'
     gem.add_dependency 'ferrum', '~> 0.15'
+    gem.add_dependency 'rangeable', '~> 1.0'
 end

@@ -302,4 +302,62 @@ class MarkupStyleRenderTest < Minitest::Test
     assert_includes out, '_'
     assert_includes out, 'hello'
   end
+
+  # ----- same-type overlap (Rangeable-merged) -----
+  # Two markups of the *same* type that overlap or are integer-adjacent get
+  # coalesced by the Rangeable index into a single tag pair before walking.
+  # When there is a real coordinate gap they stay as two independent pairs.
+  # These pin the merge behavior so future refactors (Swift port, etc.)
+  # stay byte-identical to the Ruby renderer.
+
+  def test_strong_overlapping_strong_merges_into_one_pair
+    # STRONG[2..5] + STRONG[3..7] overlap on positions 3..4 → merged to [2..7],
+    # rendered as a single `**...**` covering "llo w".
+    out = render(TEXT11,
+                 [{ 'type' => 'STRONG', 'start' => 2, 'end' => 5 },
+                  { 'type' => 'STRONG', 'start' => 3, 'end' => 7 }])
+    assert_equal 'he **llo w** orld', out
+  end
+
+  def test_em_adjacent_em_at_shared_index_merges
+    # EM[3..5] last covered = 4; EM[5..7] starts at 5 — integer adjacent in
+    # Rangeable's closed-interval space, so they coalesce.
+    out = render(TEXT11,
+                 [{ 'type' => 'EM', 'start' => 3, 'end' => 5 },
+                  { 'type' => 'EM', 'start' => 5, 'end' => 7 }])
+    assert_equal 'hel _lo w_ orld', out
+  end
+
+  def test_code_overlapping_code_merges_into_single_span
+    # Two CODE spans sharing positions 2..2 → single `` `hello` ``.
+    out = render(TEXT11,
+                 [{ 'type' => 'CODE', 'start' => 0, 'end' => 3 },
+                  { 'type' => 'CODE', 'start' => 2, 'end' => 5 }])
+    assert_equal '`hello` world', out
+  end
+
+  def test_strong_inside_strong_collapses_to_outer
+    # STRONG[2..10] fully contains STRONG[4..6]; the inner is absorbed.
+    out = render(TEXT11,
+                 [{ 'type' => 'STRONG', 'start' => 2, 'end' => 10 },
+                  { 'type' => 'STRONG', 'start' => 4, 'end' => 6 }])
+    assert_equal 'he **llo worl** d', out
+  end
+
+  def test_strong_adjacent_strong_with_gap_stays_separate
+    # STRONG[2..4] last covered = 3; STRONG[5..7] starts at 5 — integer gap
+    # of one (position 4 not covered by either), so no merge.
+    out = render(TEXT11,
+                 [{ 'type' => 'STRONG', 'start' => 2, 'end' => 4 },
+                  { 'type' => 'STRONG', 'start' => 5, 'end' => 7 }])
+    assert_equal 'he **ll** o **w** orld', out
+  end
+
+  def test_em_back_to_back_em_with_gap_stays_separate
+    # EM[2..5] + EM[6..9] — gap of one position, two independent _..._ pairs.
+    out = render(TEXT11,
+                 [{ 'type' => 'EM', 'start' => 2, 'end' => 5 },
+                  { 'type' => 'EM', 'start' => 6, 'end' => 9 }])
+    assert_equal 'he _llo_ _wor_ ld', out
+  end
 end
