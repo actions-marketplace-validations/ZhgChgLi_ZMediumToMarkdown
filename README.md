@@ -281,9 +281,13 @@ By using ZMediumToMarkdown you acknowledge and agree to comply with all applicab
 
 ## Other works
 
+**Ruby libraries**
+- [RubyRangeable](https://github.com/ZhgChgLi/RubyRangeable) — generic interval-set container, published as the `rangeable` gem; powers ZMediumToMarkdown's markup rendering since 3.6.0. Spec: [RangeableRFC](https://github.com/ZhgChgLi/RangeableRFC).
+
 **Swift libraries**
 - [ZMarkupParser](https://github.com/ZhgChgLi/ZMarkupParser) — pure-Swift HTML → `NSAttributedString` with customizable style/tag mapping.
 - [ZPlayerCacher](https://github.com/ZhgChgLi/ZPlayerCacher) — lightweight `AVAssetResourceLoaderDelegate` cache for `AVPlayerItem` streaming.
+- [SwiftRangeable](https://github.com/ZhgChgLi/SwiftRangeable) — Swift reference implementation of Rangeable.
 
 **Integration tools**
 - [mcp-medium-reader](https://github.com/ZhgChgLi/mcp-medium-reader) — macOS MCP server that wraps this gem so LLMs (Claude Desktop, etc.) can read Medium posts.
