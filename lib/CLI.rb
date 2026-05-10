@@ -7,6 +7,7 @@ require 'PathPolicy'
 require 'Request'
 require 'CookieCache'
 require 'ChromeAuth'
+require 'Terms'
 
 # All CLI-side concerns for the `ZMediumToMarkdown` executable. Pulled out
 # of bin/ so it can be exercised by unit tests without spawning processes.
@@ -21,8 +22,19 @@ module CLI
         argv = argv.dup
         argv << '-h' if argv.empty?
 
+        # Strip --accept-terms / --decline-terms before OptionParser sees them
+        # (it would otherwise raise InvalidOption on these unknown flags).
+        Terms.consumeFlags!(argv, errput: errput)
+
         options = parseArgs(argv, errput: errput)
         loadCookies!
+
+        # Only block on Terms when the run will actually contact Medium.
+        # --help / --version / --clean / --new stay quick.
+        if willHitMedium?(options)
+            Terms.ensureAccepted!(errput: errput, input: $stdin)
+        end
+
         warnAboutMissingSetup(options, errput: errput)
         run(options, cwd, output: output, errput: errput)
     end
