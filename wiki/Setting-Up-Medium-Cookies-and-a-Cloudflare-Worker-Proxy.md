@@ -1,5 +1,7 @@
 # Setting Up Medium Cookies and a Cloudflare Worker Proxy
 
+> ⚠ This guide describes attaching your Medium session cookies to an automated CLI tool and (optionally) routing GraphQL through a Cloudflare Worker. Medium's [Terms of Service](https://policy.medium.com/medium-rules-30e5502c4eb4) prohibit this kind of automated access. Following these instructions is your decision and your risk; see [TERMS.md](../TERMS.md) and [PRIVACY.md](../PRIVACY.md).
+
 Medium's GraphQL endpoint sits behind Cloudflare's bot management layer. Out of the box, two things tend to break unauthenticated runs:
 
 1. **Cloudflare blocks the request** with an HTTP 403 "Just a moment…" challenge — particularly common from cloud runners (GitHub Actions, datacenter IPs, headless browsers).

@@ -271,11 +271,23 @@ CI runs the same `rake test` against Ruby 3.2 / 3.3 / 3.4.
 
 ## Disclaimer
 
+### Medium's Terms of Service
+
+Medium's official Terms of Service forbid using *"any software, script, robot, spider or other automatic device, process or means (including crawlers, browser plugins and add-ons or any other technology) to access the Services."* — [Medium Rules](https://policy.medium.com/medium-rules-30e5502c4eb4).
+
+ZMediumToMarkdown is exactly the kind of tool that statement contemplates. **Use of this gem may conflict with Medium's Terms of Service.** The author makes no claim that this is permitted use; you accept all risk, including account suspension, IP-address blocks, or legal action by Medium. On its first invocation the CLI prints a one-time consent prompt and requires you to type `yes` before any network call is made; in non-interactive environments set `ZMTM_TOS_ACCEPTED=1` or pass `--accept-terms` once.
+
+### Copyright
+
 All content downloaded using ZMediumToMarkdown — articles, images, video — is subject to copyright and belongs to its respective owner. This tool does not claim ownership of any downloaded content.
 
 Downloading and using copyrighted content without the owner's permission may be illegal. ZMediumToMarkdown does not condone copyright infringement and will not be held responsible for misuse of this tool. Users are solely responsible for ensuring they have the necessary permissions and rights for any content they download.
 
 By using ZMediumToMarkdown you acknowledge and agree to comply with all applicable copyright laws and regulations.
+
+### Full Terms
+
+The complete Terms of Use are in [TERMS.md](./TERMS.md); the privacy posture is in [PRIVACY.md](./PRIVACY.md). Both are versioned — when they change in a backwards-incompatible way, the CLI invalidates the existing consent marker and re-prompts on the next run.
 
 ---
 

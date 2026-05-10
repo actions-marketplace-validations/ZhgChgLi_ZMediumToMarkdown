@@ -14,8 +14,11 @@ quietBanner = ARGV.include?('--stdout') || ARGV.include?('--list')
 bannerOut = quietBanner ? $stderr : $stdout
 
 begin
-    bannerOut.puts "#https://github.com/ZhgChgLi/ZMediumToMarkdown"
-    bannerOut.puts "You have read and agree with the Disclaimer."
+    # Note: The first-run Terms-of-Use prompt + acceptance machinery now
+    # lives in `lib/Terms.rb` and is triggered from `CLI.main` only when the
+    # invocation actually contacts Medium. The previous unconditional
+    # "You have read and agree with the Disclaimer." line was removed — it
+    # implied consent that hadn't actually been collected.
 
     CLI.main(ARGV)
 
